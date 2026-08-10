@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { PackagePlus, PackageMinus, CalendarDays, Calculator, X } from 'lucide-react';
+import { PackagePlus, PackageMinus, CalendarDays, Calculator, X, History, User } from 'lucide-react';
 
 export default function MedicineDetailPage() {
   const { id } = useParams();
@@ -21,6 +21,11 @@ export default function MedicineDetailPage() {
   const [inputMode, setInputMode] = useState<'base' | 'pack'>('base');
   const [inputAmount, setInputAmount] = useState("");
   const [inputPackCount, setInputPackCount] = useState("");
+
+  // States สำหรับเปิด Modal ดูประวัติ
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [historyRows, setHistoryRows] = useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const fetchMedicine = async () => {
     const { data, error } = await supabase
@@ -48,6 +53,35 @@ export default function MedicineDetailPage() {
       setStockPackSize("100"); setStockUnitName("'s");
     }
     setIsStockModalOpen(true);
+  };
+
+  const openHistoryModal = async () => {
+    setIsHistoryModalOpen(true);
+    setHistoryLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("stock_transactions")
+        .select("*")
+        .eq("medicine_id", String(id))
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setHistoryRows(data || []);
+    } catch (error) {
+      console.error("Error fetching stock history:", error);
+      setHistoryRows([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const formatHistoryDate = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleString("th-TH", {
+        day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+      });
+    } catch {
+      return iso;
+    }
   };
 
   const handleUpdateStock = async (e: React.FormEvent) => {
@@ -97,7 +131,7 @@ export default function MedicineDetailPage() {
       }
 
       setIsStockModalOpen(false);
-      fetchMedicine(); // โหลดข้อมูลสต็อกล่าสุดมาแสดงทันที
+      fetchMedicine(); 
       alert("อัปเดตสต็อกสำเร็จ!");
     } catch (error: any) {
       alert("อัปเดตสต็อกไม่สำเร็จ: " + error.message);
@@ -117,7 +151,14 @@ export default function MedicineDetailPage() {
         &larr; กลับหน้าหลักคลังยา
       </button>
       
-      <h1 className="text-3xl font-bold text-gray-800 mb-2">{medicine.name}</h1>
+      {/* คลิกที่ชื่อยาเพื่อเปิดดูประวัติการรับเข้า/ตัดจ่าย */}
+      <h1 
+        onClick={openHistoryModal}
+        className="text-3xl font-bold text-gray-800 mb-1 cursor-pointer hover:text-blue-600 hover:underline w-fit"
+        title="คลิกเพื่อดูประวัติ"
+      >
+        {medicine.name} 📜
+      </h1>
       <p className="text-sm text-gray-500 mb-6">บาร์โค้ด: {medicine.barcode || '-'}</p>
 
       <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 mb-6">
@@ -140,7 +181,6 @@ export default function MedicineDetailPage() {
         )}
       </div>
 
-      {/* ปุ่มกดรับเข้า / ตัดจ่าย ตรงนี้จะเด้งหน้าต่างกรอกจำนวนขึ้นมาทันทีโดยไม่ต้องย้อนกลับ */}
       <div className="flex gap-4">
         <button onClick={() => openStockModal('in')} className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition-colors">
           <PackagePlus size={18} /> รับเข้า
@@ -150,7 +190,7 @@ export default function MedicineDetailPage() {
         </button>
       </div>
 
-      {/* Modal รับเข้า/ตัดจ่าย (เด้งขึ้นมาบนหน้านี้เลย) */}
+      {/* Modal รับเข้า/ตัดจ่าย */}
       {isStockModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-lg w-full max-w-md overflow-hidden">
@@ -225,6 +265,54 @@ export default function MedicineDetailPage() {
                 <button type="submit" className={`flex-1 text-white p-3 rounded-lg font-medium text-lg ${stockAction === 'in' ? 'bg-emerald-600' : 'bg-red-600'}`}>ยืนยัน</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal ประวัติรับเข้า/ตัดจ่าย */}
+      {isHistoryModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-lg overflow-hidden max-h-[85vh] flex flex-col">
+            <div className="flex justify-between items-center p-6 border-b bg-gray-50">
+              <h2 className="text-lg font-bold flex items-center gap-2 text-gray-800">
+                <History size={20} className="text-gray-500" /> ประวัติ: {medicine.name}
+              </h2>
+              <button onClick={() => setIsHistoryModalOpen(false)}>
+                <X size={24} className="text-gray-400" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-2">
+              {historyLoading ? (
+                <div className="text-center text-gray-500 py-8">กำลังโหลด...</div>
+              ) : historyRows.length === 0 ? (
+                <div className="text-center text-gray-500 py-8">ยังไม่มีประวัติการรับเข้า/ตัดจ่าย</div>
+              ) : (
+                historyRows.map((row: any) => (
+                  <div key={row.id} className="flex items-start justify-between border border-gray-100 rounded-lg p-3">
+                    <div className="flex items-start gap-3">
+                      {row.action === 'in' ? (
+                        <PackagePlus size={18} className="text-emerald-600 mt-0.5" />
+                      ) : (
+                        <PackageMinus size={18} className="text-red-600 mt-0.5" />
+                      )}
+                      <div>
+                        <div className={`text-sm font-bold ${row.action === 'in' ? 'text-emerald-700' : 'text-red-700'}`}>
+                          {row.action === 'in' ? 'รับเข้า' : 'ตัดจ่าย'} {row.amount} หน่วย
+                        </div>
+                        <div className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                          <CalendarDays size={11} /> EXP ล็อต: {row.exp_date || "-"}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-0.5">{formatHistoryDate(row.created_at)}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 text-xs font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-full shrink-0">
+                      <User size={12} /> {row.staff_name}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}
