@@ -77,7 +77,7 @@ export default function AddMedicineModal({
               htmlFor="medicine-barcode"
               className="mb-2 block text-sm font-medium text-slate-700"
             >
-              บาร์โค้ด <span className="text-rose-500">*</span>
+              บาร์โค้ด
             </label>
             <input
               id="medicine-barcode"
@@ -85,8 +85,7 @@ export default function AddMedicineModal({
               value={form.barcode}
               onChange={(event) => onChange('barcode', event.target.value)}
               placeholder="เช่น 8850123456789"
-              className={inputClassName}
-              required
+              className={inputClassName}        
             />
           </div>
 

@@ -7,6 +7,7 @@ import {
   User, Users, Lock, LogOut, KeyRound, ShieldCheck, CheckCircle2, CircleDashed,
   Search, Tag, Check, LayoutGrid, History,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 
 /* =========================================================
    ตั้งค่ารายชื่อเจ้าหน้าที่ + บัญชีส่วนกลาง
@@ -455,8 +456,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   const [historyRows, setHistoryRows] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-
-
   const [stockExpDate, setStockExpDate] = useState("");
   const [stockPackSize, setStockPackSize] = useState("100");
   const [stockUnitName, setStockUnitName] = useState("'s");
@@ -534,13 +533,15 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     })
     .sort((a, b) => (a.name || "").localeCompare(b.name || "", "th"));
 
-
   const handleSaveMedicine = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       const payload = {
-        name: medFormData.name, barcode: medFormData.barcode, hosxp_icode: medFormData.hosxp_icode,
-        cabinet_category: medFormData.cabinet_category, min_stock: parseInt(medFormData.min_stock) || 0,
+        name: medFormData.name,
+        barcode: medFormData.barcode === "" ? null : medFormData.barcode,
+        hosxp_icode: medFormData.hosxp_icode,
+        cabinet_category: medFormData.cabinet_category,
+        min_stock: parseInt(medFormData.min_stock) || 0,
       };
 
       if (isEditing) {
@@ -564,7 +565,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   const openEditMedModal = (med: any) => {
     setIsEditing(true);
     setMedFormData({
-      id: med.id, name: med.name, barcode: med.barcode, hosxp_icode: med.hosxp_icode,
+      id: med.id, name: med.name, barcode: med.barcode || "", hosxp_icode: med.hosxp_icode || "",
       cabinet_category: med.cabinet_category || "1", min_stock: med.min_stock?.toString() || "0"
     });
     setIsMedModalOpen(true);
@@ -591,8 +592,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
       if (error) throw error;
     } catch (error: any) {
       console.error("Error logging stock transaction:", error);
-      // แจ้งเตือนให้เห็นสาเหตุจริง (เช่น ตาราง stock_transactions ยังไม่ถูกสร้าง หรือ RLS ปิดกั้น)
-      // การอัปเดตสต็อกหลักยังสำเร็จตามปกติ แค่ไม่ได้บันทึกประวัติรายการนี้
       alert("อัปเดตสต็อกสำเร็จ แต่บันทึกประวัติไม่สำเร็จ: " + (error?.message || "ไม่ทราบสาเหตุ"));
     }
   };
@@ -618,20 +617,19 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
       if (stockAction === 'in') {
         if (!stockExpDate) return alert("กรุณาระบุวันหมดอายุ (EXP)");
 
-        // ค้นหาล็อตเดิม (ป้องกัน Error กรณี medicine_lots เป็นค่าว่างด้วย || [])
         const existingLot = (selectedMed.medicine_lots || []).find(
           (l: any) => l.exp_date === stockExpDate && l.pack_size === parseInt(stockPackSize) && l.unit_name === stockUnitName
         );
 
         if (existingLot) {
           const { error } = await supabase.from("medicine_lots").update({ current_stock: existingLot.current_stock + totalItems }).eq("id", existingLot.id);
-          if (error) throw error; // เพิ่มการจับ Error ตรงนี้
+          if (error) throw error;
           await logTransaction({ lot_id: existingLot.id, exp_date: existingLot.exp_date, action: 'in', amount: totalItems });
         } else {
           const { data: newLot, error } = await supabase.from("medicine_lots").insert([{
             medicine_id: selectedMed.id, exp_date: stockExpDate, pack_size: parseInt(stockPackSize), unit_name: stockUnitName, current_stock: totalItems
           }]).select().single();
-          if (error) throw error; // เพิ่มการจับ Error ตรงนี้
+          if (error) throw error;
           await logTransaction({ lot_id: newLot.id, exp_date: newLot.exp_date, action: 'in', amount: totalItems });
         }
       } else {
@@ -650,7 +648,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
       setIsStockModalOpen(false);
       fetchMedicines();
     } catch (error: any) {
-      // หากพัง จะเด้งบอกสาเหตุที่แท้จริงให้เราเห็นทันที
       alert("อัปเดตสต็อกไม่สำเร็จ: " + error.message);
     }
   };
@@ -786,15 +783,16 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="p-4 font-semibold text-gray-600">จัดการข้อมูล</th>
+                  <th className="p-4 font-semibold text-gray-600">จัดการ</th>
+                  <th className="p-4 font-semibold text-gray-600 text-center">QR Code</th>
                   <th className="p-4 font-semibold text-gray-600">รหัส/ชื่อยา</th>
                   <th className="p-4 font-semibold text-gray-600">คงเหลือ (แยกตาม EXP)</th>
                   <th className="p-4 font-semibold text-gray-600 text-center">รับเข้า/ตัดจ่าย</th>
                 </tr>
               </thead>
               <tbody>
-                {loading ? <tr><td colSpan={4} className="p-8 text-center text-gray-500">กำลังโหลด...</td></tr> :
-                 filteredMedicines.length === 0 ? <tr><td colSpan={4} className="p-8 text-center text-gray-500">ไม่พบรายการยาที่ตรงกับเงื่อนไข</td></tr> :
+                {loading ? <tr><td colSpan={5} className="p-8 text-center text-gray-500">กำลังโหลด...</td></tr> :
+                 filteredMedicines.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-gray-500">ไม่พบรายการยาที่ตรงกับเงื่อนไข</td></tr> :
                  filteredMedicines.map((med) => {
                    const activeLots = (med.medicine_lots || [])
                       .filter((l: any) => l.current_stock > 0)
@@ -808,6 +806,22 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                           <button onClick={() => handleDeleteMed(med.id)} className="p-2 bg-gray-100 text-gray-600 rounded hover:bg-red-100 hover:text-red-600"><Trash2 size={16} /></button>
                         </div>
                       </td>
+                      
+                      <td className="p-4 text-center">
+                        <div className="flex flex-col items-center justify-center p-2 bg-white rounded-lg border border-gray-200 shadow-sm mx-auto w-fit">
+                          <QRCodeSVG 
+                            value={`${typeof window !== 'undefined' ? window.location.origin : ''}/medicine/${med.id}`} 
+                            size={64} 
+                          />
+                          <button 
+                            onClick={() => window.print()} 
+                            className="mt-2 px-2 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded hover:bg-blue-100 transition-colors"
+                          >
+                            พิมพ์ QR
+                          </button>
+                        </div>
+                      </td>
+
                       <td className="p-4">
                         <div
                           onClick={() => openHistoryModal(med)}
@@ -816,7 +830,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                         >
                           {med.name}
                         </div>
-                        <div className="text-sm text-gray-500">บาร์โค้ด: {med.barcode}</div>
+                        <div className="text-sm text-gray-500">บาร์โค้ด: {med.barcode || "-"}</div>
                         <div className="text-xs text-gray-400">ตู้ยา: {categories[Number(med.cabinet_category)] || med.cabinet_category || "-"}</div>
                       </td>
 
@@ -871,8 +885,14 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
               </div>
               <form onSubmit={handleSaveMedicine} className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <div><label className="block text-sm font-medium mb-1">ชื่อยา *</label><input type="text" required className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.name} onChange={(e) => setMedFormData({ ...medFormData, name: e.target.value })} /></div>
-                  <div><label className="block text-sm font-medium mb-1">บาร์โค้ด *</label><input type="text" required className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.barcode} onChange={(e) => setMedFormData({ ...medFormData, barcode: e.target.value })} /></div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">ชื่อยา *</label>
+                    <input type="text" required className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.name} onChange={(e) => setMedFormData({ ...medFormData, name: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">บาร์โค้ด</label>
+                    <input type="text" className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.barcode} onChange={(e) => setMedFormData({ ...medFormData, barcode: e.target.value })} />
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="block text-sm font-medium mb-1">รหัส HosXP</label><input type="text" className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.hosxp_icode} onChange={(e) => setMedFormData({ ...medFormData, hosxp_icode: e.target.value })} /></div>
