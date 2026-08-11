@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   Plus, PackagePlus, PackageMinus, X, Calculator, Edit, Trash2, CalendarDays,
   User, Users, Lock, LogOut, KeyRound, ShieldCheck, CheckCircle2, CircleDashed,
-  Search, Tag, Check, LayoutGrid, History,
+  Search, Tag, Check, LayoutGrid, History, TrendingDown, CalendarRange,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -415,7 +415,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     id: "", name: "", barcode: "", hosxp_icode: "", cabinet_category: "1", min_stock: ""
   });
 
-  // --- ระบบรับเข้า/ตัดจ่าย สำหรับหน้าหลัก ---
   const [isStockModalOpen, setIsStockModalOpen] = useState(false);
   const [selectedMed, setSelectedMed] = useState<any>(null);
   const [stockAction, setStockAction] = useState<'in' | 'out'>('in');
@@ -442,6 +441,14 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   const [historyRows, setHistoryRows] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  // States สำหรับการคำนวณสถิติภาพรวมในหน้ารวม
+  const [allTransactions, setAllTransactions] = useState<any[]>([]);
+  const [globalPeriodMode, setGlobalPeriodMode] = useState<'1m' | '2m' | '3m' | 'custom'>('1m');
+  const [globalStartDate, setGlobalStartDate] = useState("");
+  const [globalEndDate, setGlobalEndDate] = useState("");
+  const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
+  const [statsMed, setStatsMed] = useState<any>(null);
+
   const fetchMedicines = async () => {
     try {
       const { data, error } = await supabase
@@ -451,6 +458,14 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
 
       if (error) throw error;
       if (data) setMedicines(data);
+
+      // ดึงประวัติการตัดจ่ายทั้งหมดมาเพื่อคำนวณสถิติ
+      const { data: txData } = await supabase
+        .from("stock_transactions")
+        .select("*")
+        .eq("action", "out");
+      if (txData) setAllTransactions(txData);
+
     } catch (error) {
       console.error("Error fetching medicines:", error);
     } finally {
@@ -475,6 +490,20 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   };
 
   useEffect(() => { fetchMedicines(); fetchCategories(); }, []);
+
+  // ตั้งค่าช่วงเวลาอัตโนมัติสำหรับสถิติภาพรวม
+  useEffect(() => {
+    if (globalPeriodMode !== 'custom') {
+      const end = new Date();
+      const start = new Date();
+      if (globalPeriodMode === '1m') start.setMonth(start.getMonth() - 1);
+      if (globalPeriodMode === '2m') start.setMonth(start.getMonth() - 2);
+      if (globalPeriodMode === '3m') start.setMonth(start.getMonth() - 3);
+
+      setGlobalEndDate(end.toISOString().split('T')[0]);
+      setGlobalStartDate(start.toISOString().split('T')[0]);
+    }
+  }, [globalPeriodMode]);
 
   const handleRenameCategory = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -556,7 +585,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     } catch (error: any) { alert("ลบไม่สำเร็จ: " + error.message); }
   };
 
-  // --- ฟังก์ชันรับเข้า/ตัดจ่าย ---
   const logTransaction = async (opts: { lot_id: string; exp_date: string; action: 'in' | 'out'; amount: number }) => {
     try {
       const { error } = await supabase.from("stock_transactions").insert([{
@@ -643,7 +671,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     }
     setIsStockModalOpen(true);
   };
-  // ---------------------------------
 
   const openHistoryModal = async (med: any) => {
     setHistoryMed(med);
@@ -675,10 +702,52 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     }
   };
 
+  // คำนวณสถิติของยาแต่ละตัวตามช่วงเวลาที่กำหนดในหน้ารวม
+  const calculateMedStats = (med: any) => {
+    if (!globalStartDate || !globalEndDate) return { totalUsage: 0, recommend1W: 0, recommend2W: 0, daysDiff: 0 };
+    const start = new Date(globalStartDate);
+    const end = new Date(globalEndDate);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+
+    let daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysDiff < 1) daysDiff = 1;
+
+    const medTx = allTransactions.filter(tx => {
+      const txDate = new Date(tx.created_at);
+      return String(tx.medicine_id) === String(med.id) && txDate >= start && txDate <= end;
+    });
+
+    const totalUsage = medTx.reduce((sum, tx) => sum + tx.amount, 0);
+    const dailyRate = totalUsage / daysDiff;
+
+    const recommend1W = Math.ceil(dailyRate * 7 * 1.15);
+    const recommend2W = Math.ceil(dailyRate * 14 * 1.15);
+
+    return { totalUsage, recommend1W, recommend2W, daysDiff };
+  };
+
+  // ฟังก์ชันแปลงจำนวนชิ้นเป็นกล่อง/แพ็ค
+  const formatToPack = (total: number, med: any) => {
+    const activeLots = (med.medicine_lots || []).filter((l: any) => l.current_stock > 0);
+    const packSize = activeLots.length > 0 ? activeLots[0].pack_size : (med.medicine_lots?.[0]?.pack_size || 100);
+    const unitName = activeLots.length > 0 ? activeLots[0].unit_name : (med.medicine_lots?.[0]?.unit_name || 'หน่วย');
+
+    if (packSize <= 1 || total === 0) return null;
+    const packs = Math.floor(total / packSize);
+    const remainder = total % packSize;
+    
+    if (packs === 0) return null;
+    let text = `≈ ${packs} กล่อง`;
+    if (remainder > 0) text += ` ${remainder} ${unitName}`;
+    return text;
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-2 md:p-8">
       <div className="max-w-7xl mx-auto">
         
+        {/* === ส่วนหัว (Header) === */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4 md:mb-8 bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-100">
           <div className="w-full flex justify-between items-start md:items-center">
             <div>
@@ -715,6 +784,31 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
           </div>
         </div>
 
+        {/* === แผงควบคุมสถิติการใช้ยาภาพรวมในหน้ารวม === */}
+        <div className="bg-blue-50/60 rounded-xl shadow-sm border border-blue-100 p-4 mb-4">
+          <h2 className="text-sm font-bold text-blue-900 mb-3 flex items-center gap-1.5">
+            <TrendingDown size={18} /> สถิติการใช้ยา & วางแผนสั่งซื้อภาพรวม
+          </h2>
+          
+          <div className="flex flex-wrap gap-2 mb-3">
+            <button onClick={() => setGlobalPeriodMode('1m')} className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${globalPeriodMode === '1m' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white border text-gray-600'}`}>1 เดือน</button>
+            <button onClick={() => setGlobalPeriodMode('2m')} className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${globalPeriodMode === '2m' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white border text-gray-600'}`}>2 เดือน</button>
+            <button onClick={() => setGlobalPeriodMode('3m')} className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${globalPeriodMode === '3m' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white border text-gray-600'}`}>3 เดือน</button>
+            <button onClick={() => setGlobalPeriodMode('custom')} className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${globalPeriodMode === 'custom' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white border text-gray-600'}`}>กำหนดเอง</button>
+          </div>
+
+          {globalPeriodMode === 'custom' && (
+            <div className="flex items-center gap-2 bg-white p-2 rounded-lg border border-blue-100 max-w-md">
+              <CalendarRange size={16} className="text-blue-500" />
+              <input type="date" className="text-sm bg-transparent outline-none w-full text-gray-700" value={globalStartDate} onChange={(e) => setGlobalStartDate(e.target.value)} />
+              <span className="text-gray-400">-</span>
+              <input type="date" className="text-sm bg-transparent outline-none w-full text-gray-700" value={globalEndDate} onChange={(e) => setGlobalEndDate(e.target.value)} />
+            </div>
+          )}
+          <p className="text-[11px] text-blue-700 mt-2">* ข้อมูลสถิติและคำนวณสต็อก 1-2 สัปดาห์ (+ เผื่อ 15%) จะแสดงในตารางรายละเอียดยาแต่ละตัวด้านล่างทันที</p>
+        </div>
+
+        {/* === หมวดหมู่ตู้ยา === */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 md:p-4 mb-4 w-full overflow-hidden">
           <div className="flex items-center gap-2 mb-3 text-sm font-semibold text-gray-500">
             <LayoutGrid size={16} /> หมวดหมู่ตู้ยา
@@ -765,25 +859,30 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
           </div>
         </div>
 
+        {/* === ตารางรายชื่อยา === */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="overflow-x-auto pb-4">
-            <table className="w-full text-left border-collapse min-w-[850px]">
+            <table className="w-full text-left border-collapse min-w-[1050px]">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
                   <th className="p-3 md:p-4 font-semibold text-gray-600 w-24">จัดการ</th>
                   <th className="p-3 md:p-4 font-semibold text-gray-600 text-center w-32">QR Code</th>
-                  <th className="p-3 md:p-4 font-semibold text-gray-600 w-1/3">รหัส/ชื่อยา</th>
+                  <th className="p-3 md:p-4 font-semibold text-gray-600 w-1/4">รหัส/ชื่อยา</th>
                   <th className="p-3 md:p-4 font-semibold text-gray-600">คงเหลือ (แยกตาม EXP)</th>
+                  <th className="p-3 md:p-4 font-semibold text-gray-600 w-56">สถิติ & แผนสั่งซื้อ</th>
                   <th className="p-3 md:p-4 font-semibold text-gray-600 text-center w-32">รับเข้า/ตัดจ่าย</th>
                 </tr>
               </thead>
               <tbody>
-                {loading ? <tr><td colSpan={5} className="p-8 text-center text-gray-500">กำลังโหลด...</td></tr> :
-                 filteredMedicines.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-gray-500">ไม่พบรายการยาที่ตรงกับเงื่อนไข</td></tr> :
+                {loading ? <tr><td colSpan={6} className="p-8 text-center text-gray-500">กำลังโหลด...</td></tr> :
+                 filteredMedicines.length === 0 ? <tr><td colSpan={6} className="p-8 text-center text-gray-500">ไม่พบรายการยาที่ตรงกับเงื่อนไข</td></tr> :
                  filteredMedicines.map((med) => {
                    const activeLots = (med.medicine_lots || [])
                       .filter((l: any) => l.current_stock > 0)
                       .sort((a: any, b: any) => new Date(a.exp_date).getTime() - new Date(b.exp_date).getTime());
+                   
+                   const mainUnit = activeLots.length > 0 ? activeLots[0].unit_name : (med.medicine_lots?.[0]?.unit_name || 'หน่วย');
+                   const medStats = calculateMedStats(med);
 
                    return (
                     <tr key={med.id} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
@@ -846,6 +945,33 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                             })}
                           </div>
                         )}
+                      </td>
+
+                      {/* คอลัมน์แสดงสถิติ & แผนสั่งซื้อในหน้ารวม */}
+                      <td className="p-3 md:p-4 align-top">
+                        <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-200 text-xs space-y-1.5">
+                          <div className="flex justify-between border-b pb-1">
+                            <span className="text-gray-500">ใช้รวม ({medStats.daysDiff} วัน):</span>
+                            <span className="font-bold text-gray-800">{medStats.totalUsage} {mainUnit}</span>
+                          </div>
+                          {formatToPack(medStats.totalUsage, med) && (
+                            <div className="text-[10px] font-medium text-blue-600 text-right">{formatToPack(medStats.totalUsage, med)}</div>
+                          )}
+                          <div className="flex justify-between text-amber-800 pt-0.5">
+                            <span>ควรมี (1 สัปดาห์):</span>
+                            <span className="font-bold">{medStats.recommend1W} {mainUnit}</span>
+                          </div>
+                          {formatToPack(medStats.recommend1W, med) && (
+                            <div className="text-[10px] font-medium text-amber-700 text-right">{formatToPack(medStats.recommend1W, med)}</div>
+                          )}
+                          <div className="flex justify-between text-emerald-800 pt-0.5 border-t border-dashed">
+                            <span>ควรมี (2 สัปดาห์):</span>
+                            <span className="font-bold">{medStats.recommend2W} {mainUnit}</span>
+                          </div>
+                          {formatToPack(medStats.recommend2W, med) && (
+                            <div className="text-[10px] font-medium text-emerald-700 text-right">{formatToPack(medStats.recommend2W, med)}</div>
+                          )}
+                        </div>
                       </td>
 
                       <td className="p-3 md:p-4 align-top text-center">
@@ -974,7 +1100,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
           </div>
         )}
 
-        {/* Modal จัดการรหัสผ่านเจ้าหน้าที่ (เฉพาะบัญชีส่วนกลาง) */}
+        {/* Modal จัดการรหัสผ่านเจ้าหน้าที่ */}
         {isAdminModalOpen && session.isCentral && (
           <AdminPasswordManager onClose={() => setIsAdminModalOpen(false)} />
         )}
