@@ -9,11 +9,6 @@ import {
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 
-/* =========================================================
-   ตั้งค่ารายชื่อเจ้าหน้าที่ + บัญชีส่วนกลาง
-   - เจ้าหน้าที่ 10 คนนี้ ต้องล็อกอินด้วยรหัสผ่าน (ตั้งรหัสเองในการเข้าใช้ครั้งแรก)
-   - "บัญชีส่วนกลาง" ไม่ต้องใส่รหัสผ่าน กดเลือกแล้วเข้าระบบได้ทันที
-   ========================================================= */
 const STAFF_LIST = [
   "ศรีไพร", "จุฬารัตน์", "วิภาวรรณ", "ณัฏฐริกา", "ณัฐพร",
   "นทีทิพย์", "วรรณอาษา", "จุฑาภรณ์", "วีรากานต์", "มีนนรี",
@@ -24,19 +19,12 @@ const CATEGORY_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 type Session = { id: string; name: string; isCentral: boolean };
 
-/* แฮชรหัสผ่านด้วย SHA-256 ฝั่ง client ก่อนส่งไปเทียบ/บันทึกใน Supabase
-   หมายเหตุด้านความปลอดภัย: นี่เป็นการป้องกันแบบพื้นฐาน (ไม่มี salt, ไม่มี backend function)
-   เหมาะกับระบบภายในองค์กรที่ความเสี่ยงต่ำ หากต้องการความปลอดภัยสูงขึ้นควรย้ายการตรวจสอบ
-   รหัสผ่านไปทำที่ Supabase Edge Function หรือใช้ Supabase Auth แทน */
 async function sha256Hex(text: string) {
   const enc = new TextEncoder().encode(text);
   const buf = await crypto.subtle.digest("SHA-256", enc);
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/* =========================================================
-   หน้าจอล็อกอิน / เลือกผู้ใช้
-   ========================================================= */
 function LoginScreen({ onLogin }: { onLogin: (s: Session) => void }) {
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [staffRow, setStaffRow] = useState<any>(null);
@@ -68,7 +56,6 @@ function LoginScreen({ onLogin }: { onLogin: (s: Session) => void }) {
       if (error) throw error;
 
       if (!data) {
-        // ยังไม่มี record ของคนนี้ในตาราง -> สร้างให้อัตโนมัติ (ยังไม่มีรหัสผ่าน)
         const { data: inserted, error: insErr } = await supabase
           .from("staff_accounts")
           .insert([{ name, is_central: false }])
@@ -161,14 +148,14 @@ function LoginScreen({ onLogin }: { onLogin: (s: Session) => void }) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 md:p-6">
       <div className="w-full max-w-2xl">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-gray-800">ระบบคลังยา</h1>
           <p className="text-gray-500 mt-1">กรุณาเลือกชื่อเจ้าหน้าที่เพื่อเข้าสู่ระบบ</p>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-4">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6 mb-4">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {STAFF_LIST.map((name) => (
               <button
@@ -187,7 +174,7 @@ function LoginScreen({ onLogin }: { onLogin: (s: Session) => void }) {
           disabled={centralBusy}
           className="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-900 text-white p-3.5 rounded-xl font-medium disabled:opacity-60 transition-colors"
         >
-          <Users size={18} /> {centralBusy ? "กำลังเข้าสู่ระบบ..." : `เข้าสู่ระบบด้วย${CENTRAL_ACCOUNT_NAME} (ไม่ต้องล็อกอิน)`}
+          <Users size={18} /> {centralBusy ? "กำลังเข้าสู่ระบบ..." : `เข้าสู่ระบบด้วย${CENTRAL_ACCOUNT_NAME}`}
         </button>
         {centralError && <p className="text-red-600 text-sm mt-3 text-center">{centralError}</p>}
 
@@ -220,7 +207,7 @@ function LoginScreen({ onLogin }: { onLogin: (s: Session) => void }) {
                       type="password"
                       required
                       autoFocus
-                      className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                     />
@@ -231,7 +218,7 @@ function LoginScreen({ onLogin }: { onLogin: (s: Session) => void }) {
                       <input
                         type="password"
                         required
-                        className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full border rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500"
                         value={password2}
                         onChange={(e) => setPassword2(e.target.value)}
                       />
@@ -241,7 +228,7 @@ function LoginScreen({ onLogin }: { onLogin: (s: Session) => void }) {
                   <button
                     type="submit"
                     disabled={busy}
-                    className="w-full bg-blue-600 text-white p-2.5 rounded-lg font-medium disabled:opacity-60"
+                    className="w-full bg-blue-600 text-white p-3 rounded-lg font-medium disabled:opacity-60"
                   >
                     {busy ? "กำลังตรวจสอบ..." : mode === "setPassword" ? "ตั้งรหัสผ่านและเข้าสู่ระบบ" : "เข้าสู่ระบบ"}
                   </button>
@@ -255,10 +242,6 @@ function LoginScreen({ onLogin }: { onLogin: (s: Session) => void }) {
   );
 }
 
-/* =========================================================
-   หน้าจัดการรหัสผ่านเจ้าหน้าที่ (เฉพาะบัญชีส่วนกลางเท่านั้น)
-   - ตั้ง/รีเซ็ตรหัสผ่านให้เจ้าหน้าที่แต่ละคนได้ โดยไม่ต้องรู้รหัสเดิม
-   ========================================================= */
 function AdminPasswordManager({ onClose }: { onClose: () => void }) {
   const [rows, setRows] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
@@ -331,14 +314,14 @@ function AdminPasswordManager({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-xl shadow-lg w-full max-w-lg overflow-hidden max-h-[85vh] flex flex-col">
-        <div className="flex justify-between items-center p-6 border-b bg-gray-50">
+        <div className="flex justify-between items-center p-5 border-b bg-gray-50">
           <h2 className="text-xl font-bold flex items-center gap-2 text-gray-800">
             <ShieldCheck size={22} className="text-gray-500" /> จัดการรหัสผ่านเจ้าหน้าที่
           </h2>
           <button onClick={onClose}><X size={24} className="text-gray-400" /></button>
         </div>
 
-        <div className="p-6 overflow-y-auto space-y-2">
+        <div className="p-4 md:p-6 overflow-y-auto space-y-2">
           {loading ? (
             <div className="text-center text-gray-500 py-8">กำลังโหลด...</div>
           ) : loadError ? (
@@ -348,13 +331,13 @@ function AdminPasswordManager({ onClose }: { onClose: () => void }) {
               const row = rows[name];
               const hasPassword = !!row?.password_hash;
               return (
-                <div key={name} className="flex items-center justify-between border border-gray-100 rounded-lg p-3">
+                <div key={name} className="flex flex-col sm:flex-row sm:items-center justify-between border border-gray-100 rounded-lg p-3 gap-3">
                   <div className="flex items-center gap-2">
                     <User size={16} className="text-gray-400" />
                     <span className="font-medium text-gray-800">{name}</span>
                     {hasPassword ? (
                       <span className="flex items-center gap-1 text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                        <CheckCircle2 size={12} /> ตั้งรหัสผ่านแล้ว
+                        <CheckCircle2 size={12} /> ตั้งรหัสแล้ว
                       </span>
                     ) : (
                       <span className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
@@ -364,7 +347,7 @@ function AdminPasswordManager({ onClose }: { onClose: () => void }) {
                   </div>
                   <button
                     onClick={() => openResetForm(name)}
-                    className="flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800 px-3 py-1.5 rounded-lg hover:bg-blue-50"
+                    className="flex items-center justify-center gap-1 text-sm font-medium text-blue-600 border sm:border-none border-blue-100 py-2 sm:py-1.5 rounded-lg hover:bg-blue-50 w-full sm:w-auto"
                   >
                     <KeyRound size={14} /> {hasPassword ? "รีเซ็ตรหัสผ่าน" : "ตั้งรหัสผ่าน"}
                   </button>
@@ -391,7 +374,7 @@ function AdminPasswordManager({ onClose }: { onClose: () => void }) {
                   type="password"
                   required
                   autoFocus
-                  className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                 />
@@ -401,7 +384,7 @@ function AdminPasswordManager({ onClose }: { onClose: () => void }) {
                 <input
                   type="password"
                   required
-                  className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500"
                   value={newPassword2}
                   onChange={(e) => setNewPassword2(e.target.value)}
                 />
@@ -410,7 +393,7 @@ function AdminPasswordManager({ onClose }: { onClose: () => void }) {
               <button
                 type="submit"
                 disabled={busy}
-                className="w-full bg-blue-600 text-white p-2.5 rounded-lg font-medium disabled:opacity-60"
+                className="w-full bg-blue-600 text-white p-3 rounded-lg font-medium disabled:opacity-60"
               >
                 {busy ? "กำลังบันทึก..." : "บันทึกรหัสผ่านใหม่"}
               </button>
@@ -422,10 +405,6 @@ function AdminPasswordManager({ onClose }: { onClose: () => void }) {
   );
 }
 
-/* =========================================================
-   หน้าคลังยาเดิม (โค้ดตั้งต้น) — ปรับให้รับ session/onLogout
-   และแสดงชื่อผู้ใช้ที่ล็อกอินอยู่ พร้อมปุ่มออกจากระบบ
-   ========================================================= */
 function StockCardApp({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const [medicines, setMedicines] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -435,10 +414,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   const [medFormData, setMedFormData] = useState({
     id: "", name: "", barcode: "", hosxp_icode: "", cabinet_category: "1", min_stock: ""
   });
-
-  const [isStockModalOpen, setIsStockModalOpen] = useState(false);
-  const [selectedMed, setSelectedMed] = useState<any>(null);
-  const [stockAction, setStockAction] = useState<'in' | 'out'>('in');
 
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
 
@@ -455,15 +430,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   const [historyMed, setHistoryMed] = useState<any>(null);
   const [historyRows, setHistoryRows] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-
-  const [stockExpDate, setStockExpDate] = useState("");
-  const [stockPackSize, setStockPackSize] = useState("100");
-  const [stockUnitName, setStockUnitName] = useState("'s");
-  const [selectedLotId, setSelectedLotId] = useState("");
-
-  const [inputMode, setInputMode] = useState<'base' | 'pack'>('base');
-  const [inputAmount, setInputAmount] = useState("");
-  const [inputPackCount, setInputPackCount] = useState("");
 
   const fetchMedicines = async () => {
     try {
@@ -579,79 +545,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     } catch (error: any) { alert("ลบไม่สำเร็จ: " + error.message); }
   };
 
-  const logTransaction = async (opts: { lot_id: string; exp_date: string; action: 'in' | 'out'; amount: number }) => {
-    try {
-      const { error } = await supabase.from("stock_transactions").insert([{
-        medicine_id: String(selectedMed.id),
-        lot_id: String(opts.lot_id),
-        exp_date: opts.exp_date,
-        action: opts.action,
-        amount: opts.amount,
-        staff_name: session.name,
-      }]);
-      if (error) throw error;
-    } catch (error: any) {
-      console.error("Error logging stock transaction:", error);
-      alert("อัปเดตสต็อกสำเร็จ แต่บันทึกประวัติไม่สำเร็จ: " + (error?.message || "ไม่ทราบสาเหตุ"));
-    }
-  };
-
-  const handleUpdateStock = async (e: React.FormEvent) => {
-    e.preventDefault();
-    let totalItems = 0;
-
-    if (inputMode === 'base') {
-      totalItems = parseInt(inputAmount);
-      if (!totalItems || totalItems <= 0) return alert("กรุณาระบุจำนวนให้ถูกต้อง");
-    } else {
-      const packs = parseFloat(inputPackCount);
-      const size = stockAction === 'out'
-        ? (selectedMed.medicine_lots || []).find((l: any) => l.id === selectedLotId)?.pack_size
-        : parseInt(stockPackSize);
-
-      if (!packs || packs <= 0 || !size || size <= 0) return alert("กรุณาระบุข้อมูลให้ครบถ้วน");
-      totalItems = Math.round(packs * size);
-    }
-
-    try {
-      if (stockAction === 'in') {
-        if (!stockExpDate) return alert("กรุณาระบุวันหมดอายุ (EXP)");
-
-        const existingLot = (selectedMed.medicine_lots || []).find(
-          (l: any) => l.exp_date === stockExpDate && l.pack_size === parseInt(stockPackSize) && l.unit_name === stockUnitName
-        );
-
-        if (existingLot) {
-          const { error } = await supabase.from("medicine_lots").update({ current_stock: existingLot.current_stock + totalItems }).eq("id", existingLot.id);
-          if (error) throw error;
-          await logTransaction({ lot_id: existingLot.id, exp_date: existingLot.exp_date, action: 'in', amount: totalItems });
-        } else {
-          const { data: newLot, error } = await supabase.from("medicine_lots").insert([{
-            medicine_id: selectedMed.id, exp_date: stockExpDate, pack_size: parseInt(stockPackSize), unit_name: stockUnitName, current_stock: totalItems
-          }]).select().single();
-          if (error) throw error;
-          await logTransaction({ lot_id: newLot.id, exp_date: newLot.exp_date, action: 'in', amount: totalItems });
-        }
-      } else {
-        if (!selectedLotId) return alert("กรุณาเลือกล็อตที่ต้องการตัดจ่าย");
-        const lotToDeduct = (selectedMed.medicine_lots || []).find((l: any) => l.id === selectedLotId);
-
-        if (!lotToDeduct) return alert("ไม่พบข้อมูลล็อต");
-        if (totalItems > lotToDeduct.current_stock) {
-          return alert(`สต็อกในล็อตนี้ไม่พอ! ต้องการเบิก ${totalItems} แต่มีแค่ ${lotToDeduct.current_stock}`);
-        }
-        const { error } = await supabase.from("medicine_lots").update({ current_stock: lotToDeduct.current_stock - totalItems }).eq("id", lotToDeduct.id);
-        if (error) throw error;
-        await logTransaction({ lot_id: lotToDeduct.id, exp_date: lotToDeduct.exp_date, action: 'out', amount: totalItems });
-      }
-
-      setIsStockModalOpen(false);
-      fetchMedicines();
-    } catch (error: any) {
-      alert("อัปเดตสต็อกไม่สำเร็จ: " + error.message);
-    }
-  };
-
   const openHistoryModal = async (med: any) => {
     setHistoryMed(med);
     setIsHistoryModalOpen(true);
@@ -682,62 +575,60 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     }
   };
 
-  const openStockModal = (med: any, action: 'in' | 'out') => {
-    setSelectedMed(med);
-    setStockAction(action);
-    setInputMode('base');
-    setInputAmount(""); setInputPackCount(""); setStockExpDate(""); setSelectedLotId("");
-    if (med.medicine_lots && med.medicine_lots.length > 0) {
-      setStockPackSize(med.medicine_lots[0].pack_size.toString());
-      setStockUnitName(med.medicine_lots[0].unit_name);
-    } else {
-      setStockPackSize("100"); setStockUnitName("'s");
-    }
-    setIsStockModalOpen(true);
-  };
-
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="min-h-screen bg-gray-50 p-2 md:p-8">
       <div className="max-w-7xl mx-auto">
-        <div className="flex justify-between items-center mb-8 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800">ระบบคลังยา (ระบบจัดล็อต EXP)</h1>
-            <p className="text-gray-500 mt-1">Lot & Expiry Date Management</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="text-right hidden sm:block">
-              <div className="text-sm font-medium text-gray-700 flex items-center gap-1 justify-end">
-                <User size={14} className="text-gray-400" /> {session.name}
-              </div>
-              {session.isCentral && <div className="text-xs text-gray-400">บัญชีส่วนกลาง</div>}
+        
+        {/* === ส่วนหัว (Header) ปรับให้รองรับมือถือ === */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4 md:mb-8 bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-100">
+          <div className="w-full flex justify-between items-start md:items-center">
+            <div>
+              <h1 className="text-xl md:text-2xl font-bold text-gray-800 leading-tight">
+                ระบบคลังยา <br className="md:hidden" />
+                <span className="text-base md:text-2xl font-semibold text-gray-600">(จัดล็อต EXP)</span>
+              </h1>
+              <p className="text-xs md:text-sm text-gray-500 mt-1">Lot & Expiry Date Management</p>
             </div>
-            <button onClick={openAddMedModal} className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
-              <Plus size={20} /> เพิ่มรายการยาใหม่
+            
+            {/* แสดงชื่อผู้ใช้มุมขวาบนในมือถือ */}
+            <div className="text-right md:hidden">
+              <div className="text-[10px] font-medium text-gray-700 flex items-center justify-end gap-1 bg-gray-100 px-2 py-1 rounded-full">
+                <User size={12} className="text-gray-500" /> {session.name}
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex flex-wrap md:flex-nowrap items-center gap-2 w-full md:w-auto mt-2 md:mt-0">
+            <button onClick={openAddMedModal} className="flex-1 md:flex-none flex justify-center items-center gap-1 md:gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2.5 md:px-4 md:py-2 rounded-lg font-medium transition-colors text-sm md:text-base shadow-sm">
+              <Plus size={18} /> เพิ่มรายการยาใหม่
             </button>
             {session.isCentral && (
               <button
                 onClick={() => setIsAdminModalOpen(true)}
                 title="จัดการรหัสผ่านเจ้าหน้าที่"
-                className="p-2.5 bg-gray-100 text-gray-500 rounded-lg hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                className="p-2.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-blue-100 hover:text-blue-700 transition-colors shrink-0"
               >
-                <ShieldCheck size={18} />
+                <ShieldCheck size={20} />
               </button>
             )}
-            <button onClick={onLogout} title="ออกจากระบบ" className="p-2.5 bg-gray-100 text-gray-500 rounded-lg hover:bg-red-50 hover:text-red-600 transition-colors">
-              <LogOut size={18} />
+            <button onClick={onLogout} title="ออกจากระบบ" className="p-2.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-red-100 hover:text-red-700 transition-colors shrink-0">
+              <LogOut size={20} />
             </button>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
+        {/* === หมวดหมู่ตู้ยา ปรับให้เลื่อนซ้ายขวาได้ในมือถือ === */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 md:p-4 mb-4 w-full overflow-hidden">
           <div className="flex items-center gap-2 mb-3 text-sm font-semibold text-gray-500">
             <LayoutGrid size={16} /> หมวดหมู่ตู้ยา
           </div>
-          <div className="flex flex-wrap gap-2 mb-4">
+          
+          {/* กรอบหมวดหมู่ เลื่อนซ้ายขวาได้ (Horizontal Scroll) */}
+          <div className="flex overflow-x-auto pb-3 -mb-1 gap-2 snap-x" style={{ scrollbarWidth: 'thin' }}>
             <button
               onClick={() => setSelectedCategory("all")}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-                selectedCategory === "all" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
+              className={`shrink-0 snap-start px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                selectedCategory === "all" ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
               }`}
             >
               ทั้งหมด
@@ -745,69 +636,69 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
             {CATEGORY_IDS.map((id) => (
               <div
                 key={id}
-                className={`flex items-center gap-1 rounded-lg border transition-colors ${
-                  selectedCategory === id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200 hover:border-blue-300"
+                className={`shrink-0 snap-start flex items-center gap-0.5 rounded-lg border transition-colors ${
+                  selectedCategory === id ? "bg-blue-600 border-blue-600 shadow-sm" : "bg-white border-gray-200 hover:bg-gray-50"
                 }`}
               >
                 <button
                   onClick={() => setSelectedCategory(id)}
-                  className={`pl-3 pr-1.5 py-1.5 text-sm font-medium ${selectedCategory === id ? "text-white" : "text-gray-600"}`}
+                  className={`pl-3 pr-2 py-1.5 text-sm font-medium whitespace-nowrap ${selectedCategory === id ? "text-white" : "text-gray-600"}`}
                 >
                   {categories[id] || `ตู้ยา ${id}`}
                 </button>
                 <button
                   onClick={() => { setEditingCategoryId(id); setCategoryNameInput(categories[id] || `ตู้ยา ${id}`); }}
                   title="แก้ไขชื่อหมวดหมู่"
-                  className={`p-1.5 mr-1 rounded-md ${selectedCategory === id ? "text-white/80 hover:text-white hover:bg-white/10" : "text-gray-400 hover:text-blue-600 hover:bg-blue-50"}`}
+                  className={`p-1.5 mr-1 rounded-md transition-colors ${selectedCategory === id ? "text-white/80 hover:text-white hover:bg-white/20" : "text-gray-400 hover:text-blue-600 hover:bg-blue-50"}`}
                 >
-                  <Edit size={12} />
+                  <Edit size={14} />
                 </button>
               </div>
             ))}
           </div>
 
-          <div className="relative">
+          <div className="relative mt-2">
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="ค้นหาด้วยชื่อยา, รหัส HosXP หรือบาร์โค้ด..."
-              className="w-full border rounded-lg pl-10 pr-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="ค้นหาชื่อยา, HosXP หรือบาร์โค้ด..."
+              className="w-full border rounded-lg pl-10 pr-4 py-2.5 md:py-3 text-sm md:text-base outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50/50"
             />
           </div>
         </div>
 
+        {/* === ตารางรายชื่อยา === */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full text-left border-collapse min-w-[800px]">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="p-4 font-semibold text-gray-600">จัดการ</th>
-                  <th className="p-4 font-semibold text-gray-600 text-center">QR Code</th>
-                  <th className="p-4 font-semibold text-gray-600">รหัส/ชื่อยา</th>
-                  <th className="p-4 font-semibold text-gray-600">คงเหลือ (แยกตาม EXP)</th>
-                  <th className="p-4 font-semibold text-gray-600 text-center">รับเข้า/ตัดจ่าย</th>
+                  <th className="p-3 md:p-4 font-semibold text-gray-600 w-24">จัดการ</th>
+                  <th className="p-3 md:p-4 font-semibold text-gray-600 text-center w-32">QR Code</th>
+                  <th className="p-3 md:p-4 font-semibold text-gray-600">รหัส/ชื่อยา</th>
+                  <th className="p-3 md:p-4 font-semibold text-gray-600">คงเหลือ (แยกตาม EXP)</th>
                 </tr>
               </thead>
               <tbody>
-                {loading ? <tr><td colSpan={5} className="p-8 text-center text-gray-500">กำลังโหลด...</td></tr> :
-                 filteredMedicines.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-gray-500">ไม่พบรายการยาที่ตรงกับเงื่อนไข</td></tr> :
+                {loading ? <tr><td colSpan={4} className="p-8 text-center text-gray-500">กำลังโหลด...</td></tr> :
+                 filteredMedicines.length === 0 ? <tr><td colSpan={4} className="p-8 text-center text-gray-500">ไม่พบรายการยาที่ตรงกับเงื่อนไข</td></tr> :
                  filteredMedicines.map((med) => {
                    const activeLots = (med.medicine_lots || [])
                       .filter((l: any) => l.current_stock > 0)
                       .sort((a: any, b: any) => new Date(a.exp_date).getTime() - new Date(b.exp_date).getTime());
 
                    return (
-                    <tr key={med.id} className="border-b border-gray-50 hover:bg-gray-50">
-                      <td className="p-4">
+                    <tr key={med.id} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
+                      <td className="p-3 md:p-4 align-top">
                         <div className="flex gap-2">
-                          <button onClick={() => openEditMedModal(med)} className="p-2 bg-gray-100 text-gray-600 rounded hover:bg-blue-100 hover:text-blue-600"><Edit size={16} /></button>
-                          <button onClick={() => handleDeleteMed(med.id)} className="p-2 bg-gray-100 text-gray-600 rounded hover:bg-red-100 hover:text-red-600"><Trash2 size={16} /></button>
+                          <button onClick={() => openEditMedModal(med)} className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-blue-100 hover:text-blue-700 transition-colors"><Edit size={16} /></button>
+                          <button onClick={() => handleDeleteMed(med.id)} className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-red-100 hover:text-red-700 transition-colors"><Trash2 size={16} /></button>
                         </div>
                       </td>
                       
-                      <td className="p-4 text-center">
+                      <td className="p-3 md:p-4 text-center align-top">
                         <div className="flex flex-col items-center justify-center p-2 bg-white rounded-lg border border-gray-200 shadow-sm mx-auto w-fit">
                           <QRCodeSVG 
                             value={`${typeof window !== 'undefined' ? window.location.origin : ''}/medicine/${med.id}`} 
@@ -815,57 +706,50 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                           />
                           <button 
                             onClick={() => window.print()} 
-                            className="mt-2 px-2 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded hover:bg-blue-100 transition-colors"
+                            className="mt-2 px-2 py-1 bg-blue-50 text-blue-600 text-[10px] md:text-xs font-semibold rounded hover:bg-blue-100 transition-colors w-full"
                           >
                             พิมพ์ QR
                           </button>
                         </div>
                       </td>
 
-                      <td className="p-4">
+                      <td className="p-3 md:p-4 align-top">
                         <div
                           onClick={() => openHistoryModal(med)}
-                          className="font-bold text-gray-800 text-lg cursor-pointer hover:text-blue-600 hover:underline w-fit"
-                          title="ดูประวัติรับเข้า/ตัดจ่าย"
+                          className="font-bold text-gray-800 text-base md:text-lg cursor-pointer hover:text-blue-600 hover:underline w-fit mb-1"
+                          title="ดูประวัติ"
                         >
                           {med.name}
                         </div>
-                        <div className="text-sm text-gray-500">บาร์โค้ด: {med.barcode || "-"}</div>
-                        <div className="text-xs text-gray-400">ตู้ยา: {categories[Number(med.cabinet_category)] || med.cabinet_category || "-"}</div>
+                        <div className="text-xs md:text-sm text-gray-500 mb-0.5">บาร์โค้ด: {med.barcode || "-"}</div>
+                        <div className="text-[10px] md:text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-md w-fit">ตู้ยา: {categories[Number(med.cabinet_category)] || med.cabinet_category || "-"}</div>
                       </td>
 
-                      <td className="p-4">
+                      <td className="p-3 md:p-4 align-top">
                         {activeLots.length === 0 ? (
-                          <span className="text-red-500 font-bold px-3 py-1 bg-red-50 rounded-lg">สต็อกหมด</span>
+                          <span className="text-red-500 text-sm font-bold px-3 py-1 bg-red-50 rounded-lg border border-red-100">สต็อกหมด</span>
                         ) : (
                           <div className="flex flex-col gap-2">
                             {activeLots.map((lot: any) => {
                               const fullPacks = Math.floor(lot.current_stock / lot.pack_size);
                               const remainder = lot.current_stock % lot.pack_size;
                               return (
-                                <div key={lot.id} className="flex flex-col bg-white border border-gray-200 p-2 rounded-lg shadow-sm w-fit">
-                                  <span className="text-xs font-semibold text-rose-600 flex items-center gap-1 mb-1">
+                                <div key={lot.id} className="flex flex-col bg-white border border-gray-200 p-2 md:p-2.5 rounded-lg shadow-sm w-fit min-w-[140px]">
+                                  <span className="text-[10px] md:text-xs font-semibold text-rose-600 flex items-center gap-1 mb-1 border-b border-gray-50 pb-1">
                                     <CalendarDays size={12} /> EXP: {lot.exp_date}
                                   </span>
-                                  <div className="flex items-baseline gap-1 text-sm">
-                                    <span className="font-bold text-emerald-700 text-base">{fullPacks}</span>
+                                  <div className="flex items-baseline gap-1 text-sm md:text-base">
+                                    <span className="font-bold text-emerald-700">{fullPacks}</span>
                                     <span className="text-gray-400 text-xs">x</span>
                                     <span className="text-gray-700 font-medium">{lot.pack_size}</span>
-                                    {remainder > 0 && <span className="text-amber-600 font-bold ml-1">...เศษ {remainder}</span>}
-                                    <span className="text-gray-600 text-xs ml-1">{lot.unit_name}</span>
+                                    {remainder > 0 && <span className="text-amber-600 font-bold ml-1 text-xs">...เศษ {remainder}</span>}
+                                    <span className="text-gray-500 text-[10px] md:text-xs ml-1">{lot.unit_name}</span>
                                   </div>
                                 </div>
                               )
                             })}
                           </div>
                         )}
-                      </td>
-
-                      <td className="p-4 text-center">
-                        <div className="flex justify-center gap-2">
-                          <button onClick={() => openStockModal(med, 'in')} className="p-3 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 shadow-sm" title="รับเข้า"><PackagePlus size={20} /></button>
-                          <button onClick={() => openStockModal(med, 'out')} className="p-3 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 shadow-sm" title="ตัดจ่าย"><PackageMinus size={20} /></button>
-                        </div>
                       </td>
                     </tr>
                    )
@@ -878,108 +762,29 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
         {/* Modal เพิ่ม/แก้ไข ยา */}
         {isMedModalOpen && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-xl shadow-lg w-full max-w-lg overflow-hidden">
-              <div className="flex justify-between items-center p-6 border-b">
-                <h2 className="text-xl font-bold">{isEditing ? 'แก้ไขข้อมูลยา' : 'เพิ่มรายการยาใหม่ (Master)'}</h2>
-                <button onClick={() => setIsMedModalOpen(false)}><X size={24} className="text-gray-400" /></button>
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
+              <div className="flex justify-between items-center p-5 md:p-6 border-b bg-gray-50">
+                <h2 className="text-lg md:text-xl font-bold text-gray-800">{isEditing ? 'แก้ไขข้อมูลยา' : 'เพิ่มรายการยาใหม่ (Master)'}</h2>
+                <button onClick={() => setIsMedModalOpen(false)} className="p-1 hover:bg-gray-200 rounded-md transition-colors"><X size={22} className="text-gray-500" /></button>
               </div>
-              <form onSubmit={handleSaveMedicine} className="p-6 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+              <form onSubmit={handleSaveMedicine} className="p-5 md:p-6 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-1">ชื่อยา *</label>
-                    <input type="text" required className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.name} onChange={(e) => setMedFormData({ ...medFormData, name: e.target.value })} />
+                    <label className="block text-sm font-medium mb-1.5 text-gray-700">ชื่อยา *</label>
+                    <input type="text" required className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.name} onChange={(e) => setMedFormData({ ...medFormData, name: e.target.value })} />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">บาร์โค้ด</label>
-                    <input type="text" className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.barcode} onChange={(e) => setMedFormData({ ...medFormData, barcode: e.target.value })} />
+                    <label className="block text-sm font-medium mb-1.5 text-gray-700">บาร์โค้ด</label>
+                    <input type="text" className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.barcode} onChange={(e) => setMedFormData({ ...medFormData, barcode: e.target.value })} />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div><label className="block text-sm font-medium mb-1">รหัส HosXP</label><input type="text" className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.hosxp_icode} onChange={(e) => setMedFormData({ ...medFormData, hosxp_icode: e.target.value })} /></div>
-                  <div><label className="block text-sm font-medium mb-1">หมวดหมู่ตู้ยา</label><select className="w-full border rounded-lg p-2.5 bg-white" value={medFormData.cabinet_category} onChange={(e) => setMedFormData({ ...medFormData, cabinet_category: e.target.value })}>{CATEGORY_IDS.map(num => <option key={num} value={num.toString()}>{categories[num] || `ตู้ยา ${num}`}</option>)}</select></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div><label className="block text-sm font-medium mb-1.5 text-gray-700">รหัส HosXP</label><input type="text" className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.hosxp_icode} onChange={(e) => setMedFormData({ ...medFormData, hosxp_icode: e.target.value })} /></div>
+                  <div><label className="block text-sm font-medium mb-1.5 text-gray-700">หมวดหมู่ตู้ยา</label><select className="w-full border border-gray-300 rounded-lg p-2.5 bg-white outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.cabinet_category} onChange={(e) => setMedFormData({ ...medFormData, cabinet_category: e.target.value })}>{CATEGORY_IDS.map(num => <option key={num} value={num.toString()}>{categories[num] || `ตู้ยา ${num}`}</option>)}</select></div>
                 </div>
                 <div className="pt-4 flex gap-3">
-                  <button type="button" onClick={() => setIsMedModalOpen(false)} className="flex-1 border p-2.5 rounded-lg font-medium">ยกเลิก</button>
-                  <button type="submit" className="flex-1 bg-blue-600 text-white p-2.5 rounded-lg font-medium">{isEditing ? 'บันทึกการแก้ไข' : 'บันทึกยาใหม่'}</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Modal รับเข้า/ตัดจ่าย */}
-        {isStockModalOpen && selectedMed && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-xl shadow-lg w-full max-w-md overflow-hidden">
-              <div className={`flex justify-between items-center p-6 border-b ${stockAction === 'in' ? 'bg-emerald-50 border-emerald-100' : 'bg-red-50 border-red-100'}`}>
-                <h2 className={`text-lg font-bold flex items-center gap-2 ${stockAction === 'in' ? 'text-emerald-800' : 'text-red-800'}`}>
-                  {stockAction === 'in' ? <PackagePlus size={22} /> : <PackageMinus size={22} />}
-                  {stockAction === 'in' ? 'รับเข้าสต็อก (ระบุ EXP)' : 'ตัดจ่ายสต็อก (เลือก EXP)'}
-                </h2>
-                <button onClick={() => setIsStockModalOpen(false)}><X size={24} className="text-gray-400" /></button>
-              </div>
-
-              <form onSubmit={handleUpdateStock} className="p-6 space-y-4">
-                <div className="font-bold text-gray-800 mb-2 border-b pb-2">{selectedMed.name}</div>
-
-                {stockAction === 'in' ? (
-                  <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-100 space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium text-emerald-800 mb-1">วันหมดอายุ (EXP) *</label>
-                      <input type="date" required className="w-full border rounded-lg p-2.5" value={stockExpDate} onChange={(e) => setStockExpDate(e.target.value)} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-emerald-800 mb-1">ขนาดบรรจุ / กล่อง</label>
-                        <input type="number" required min="1" className="w-full border rounded-lg p-2.5" value={stockPackSize} onChange={(e) => setStockPackSize(e.target.value)} />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-emerald-800 mb-1">หน่วยนับ</label>
-                        <select className="w-full border rounded-lg p-2.5 bg-white" value={stockUnitName} onChange={(e) => setStockUnitName(e.target.value)}>
-                          <option value="'s">'s (เม็ด)</option><option value="vial">vial</option><option value="amp">amp</option><option value="bottle">bottle</option><option value="box">box</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="bg-red-50 p-3 rounded-lg border border-red-100">
-                    <label className="block text-sm font-medium text-red-800 mb-1">เลือกล็อต EXP ที่ต้องการหักสต็อก *</label>
-                    <select required className="w-full border rounded-lg p-3 bg-white font-medium" value={selectedLotId} onChange={(e) => setSelectedLotId(e.target.value)}>
-                      <option value="">-- กรุณาเลือกล็อต --</option>
-                      {(selectedMed.medicine_lots || []).filter((l: any) => l.current_stock > 0).map((lot: any) => (
-                        <option key={lot.id} value={lot.id}>
-                          EXP: {lot.exp_date} (เหลือ: {lot.current_stock} {lot.unit_name} | บรรจุ {lot.pack_size})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                <div className="mt-4">
-                  <div className="flex bg-gray-100 p-1 rounded-lg mb-3">
-                    <button type="button" className={`flex-1 py-1.5 text-sm font-medium rounded ${inputMode === 'base' ? 'bg-white shadow text-gray-800' : 'text-gray-500'}`} onClick={() => setInputMode('base')}>กรอกเป็นเม็ด/ชิ้น</button>
-                    <button type="button" className={`flex-1 py-1.5 text-sm font-medium rounded ${inputMode === 'pack' ? 'bg-white shadow text-gray-800' : 'text-gray-500'}`} onClick={() => setInputMode('pack')}>กรอกเป็นกล่อง/แพ็ค</button>
-                  </div>
-
-                  {inputMode === 'base' ? (
-                    <div>
-                      <label className="block text-sm font-medium mb-1">ระบุจำนวน (ชิ้นย่อย)</label>
-                      <input type="number" required min="1" className="w-full border rounded-lg p-3 text-lg font-bold text-center" value={inputAmount} onChange={(e) => setInputAmount(e.target.value)} />
-                    </div>
-                  ) : (
-                    <div>
-                      <label className="block text-sm font-medium mb-1">ระบุจำนวน (กล่อง/แพ็ค)</label>
-                      <input type="number" step="0.1" required min="0.1" className="w-full border rounded-lg p-3 text-lg font-bold text-center" value={inputPackCount} onChange={(e) => setInputPackCount(e.target.value)} />
-                      <p className="text-xs text-gray-500 mt-2 text-center">
-                        <Calculator size={12} className="inline mr-1" /> ระบบจะนำจำนวนที่กรอก ไปคูณกับขนาดบรรจุให้อัตโนมัติ
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="pt-4 flex gap-3">
-                  <button type="button" onClick={() => setIsStockModalOpen(false)} className="flex-1 border p-3 rounded-lg font-medium">ยกเลิก</button>
-                  <button type="submit" className={`flex-1 text-white p-3 rounded-lg font-medium text-lg ${stockAction === 'in' ? 'bg-emerald-600' : 'bg-red-600'}`}>ยืนยัน</button>
+                  <button type="button" onClick={() => setIsMedModalOpen(false)} className="flex-1 border border-gray-300 p-3 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors">ยกเลิก</button>
+                  <button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-medium transition-colors">{isEditing ? 'บันทึกการแก้ไข' : 'บันทึกยาใหม่'}</button>
                 </div>
               </form>
             </div>
@@ -994,30 +799,30 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
         {/* Modal แก้ไขชื่อหมวดหมู่ตู้ยา */}
         {editingCategoryId !== null && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-xl shadow-lg w-full max-w-sm overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden">
               <div className="flex justify-between items-center p-5 border-b bg-blue-50 border-blue-100">
                 <h2 className="text-lg font-bold flex items-center gap-2 text-blue-900">
-                  <Tag size={18} /> แก้ไขชื่อหมวดหมู่ตู้ยา {editingCategoryId}
+                  <Tag size={18} /> แก้ไขชื่อตู้ยา {editingCategoryId}
                 </h2>
-                <button onClick={() => { setEditingCategoryId(null); setCategoryNameInput(""); }}>
-                  <X size={22} className="text-gray-400" />
+                <button onClick={() => { setEditingCategoryId(null); setCategoryNameInput(""); }} className="p-1 hover:bg-blue-100 rounded-md transition-colors">
+                  <X size={20} className="text-blue-500" />
                 </button>
               </div>
               <form onSubmit={handleRenameCategory} className="p-6 space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">ชื่อหมวดหมู่</label>
+                  <label className="block text-sm font-medium mb-1.5 text-gray-700">ชื่อหมวดหมู่ใหม่</label>
                   <input
                     type="text"
                     required
                     autoFocus
-                    className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500"
                     value={categoryNameInput}
                     onChange={(e) => setCategoryNameInput(e.target.value)}
                   />
                 </div>
                 <div className="pt-2 flex gap-3">
-                  <button type="button" onClick={() => { setEditingCategoryId(null); setCategoryNameInput(""); }} className="flex-1 border p-2.5 rounded-lg font-medium">ยกเลิก</button>
-                  <button type="submit" disabled={categoryBusy} className="flex-1 flex items-center justify-center gap-1 bg-blue-600 text-white p-2.5 rounded-lg font-medium disabled:opacity-60">
+                  <button type="button" onClick={() => { setEditingCategoryId(null); setCategoryNameInput(""); }} className="flex-1 border border-gray-300 p-2.5 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors">ยกเลิก</button>
+                  <button type="submit" disabled={categoryBusy} className="flex-1 flex items-center justify-center gap-1 bg-blue-600 hover:bg-blue-700 text-white p-2.5 rounded-xl font-medium disabled:opacity-60 transition-colors">
                     <Check size={16} /> {categoryBusy ? "กำลังบันทึก..." : "บันทึก"}
                   </button>
                 </div>
@@ -1026,44 +831,42 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
           </div>
         )}
 
-        {/* Modal ประวัติรับเข้า/ตัดจ่าย */}
+        {/* Modal ประวัติการใช้งาน */}
         {isHistoryModalOpen && historyMed && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-xl shadow-lg w-full max-w-lg overflow-hidden max-h-[85vh] flex flex-col">
-              <div className="flex justify-between items-center p-6 border-b bg-gray-50">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden max-h-[85vh] flex flex-col">
+              <div className="flex justify-between items-center p-5 md:p-6 border-b bg-gray-50">
                 <h2 className="text-lg font-bold flex items-center gap-2 text-gray-800">
                   <History size={20} className="text-gray-500" /> ประวัติ: {historyMed.name}
                 </h2>
-                <button onClick={() => { setIsHistoryModalOpen(false); setHistoryMed(null); setHistoryRows([]); }}>
-                  <X size={24} className="text-gray-400" />
+                <button onClick={() => { setIsHistoryModalOpen(false); setHistoryMed(null); setHistoryRows([]); }} className="p-1 hover:bg-gray-200 rounded-md transition-colors">
+                  <X size={22} className="text-gray-500" />
                 </button>
               </div>
 
-              <div className="p-6 overflow-y-auto space-y-2">
+              <div className="p-4 md:p-6 overflow-y-auto space-y-3">
                 {historyLoading ? (
                   <div className="text-center text-gray-500 py-8">กำลังโหลด...</div>
                 ) : historyRows.length === 0 ? (
-                  <div className="text-center text-gray-500 py-8">ยังไม่มีประวัติการรับเข้า/ตัดจ่าย</div>
+                  <div className="text-center text-gray-500 py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">ยังไม่มีประวัติการรับเข้า/ตัดจ่าย</div>
                 ) : (
                   historyRows.map((row: any) => (
-                    <div key={row.id} className="flex items-start justify-between border border-gray-100 rounded-lg p-3">
+                    <div key={row.id} className="flex items-start justify-between border border-gray-100 bg-white rounded-xl p-3 md:p-4 shadow-sm">
                       <div className="flex items-start gap-3">
-                        {row.action === 'in' ? (
-                          <PackagePlus size={18} className="text-emerald-600 mt-0.5" />
-                        ) : (
-                          <PackageMinus size={18} className="text-red-600 mt-0.5" />
-                        )}
+                        <div className={`p-2 rounded-lg mt-0.5 ${row.action === 'in' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                          {row.action === 'in' ? <PackagePlus size={18} /> : <PackageMinus size={18} />}
+                        </div>
                         <div>
-                          <div className={`text-sm font-bold ${row.action === 'in' ? 'text-emerald-700' : 'text-red-700'}`}>
+                          <div className={`text-sm md:text-base font-bold ${row.action === 'in' ? 'text-emerald-700' : 'text-red-700'}`}>
                             {row.action === 'in' ? 'รับเข้า' : 'ตัดจ่าย'} {row.amount} หน่วย
                           </div>
-                          <div className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
-                            <CalendarDays size={11} /> EXP ล็อต: {row.exp_date || "-"}
+                          <div className="text-xs md:text-sm text-gray-500 flex items-center gap-1 mt-1">
+                            <CalendarDays size={12} /> EXP: {row.exp_date || "-"}
                           </div>
-                          <div className="text-xs text-gray-400 mt-0.5">{formatHistoryDate(row.created_at)}</div>
+                          <div className="text-[10px] md:text-xs text-gray-400 mt-1">{formatHistoryDate(row.created_at)}</div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1 text-xs font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-full shrink-0">
+                      <div className="flex items-center gap-1 text-[10px] md:text-xs font-medium text-gray-600 bg-gray-100 px-2.5 py-1 rounded-full shrink-0">
                         <User size={12} /> {row.staff_name}
                       </div>
                     </div>
@@ -1078,11 +881,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   );
 }
 
-/* =========================================================
-   Component หลักที่ export — ตรวจ session ก่อนตัดสินใจว่าจะ
-   แสดงหน้า Login หรือหน้าคลังยา และเก็บ session ไว้ใน
-   localStorage เพื่อให้ "จำไว้จนกว่าจะออกจากระบบ"
-   ========================================================= */
 export default function StockCardPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [checkedSession, setCheckedSession] = useState(false);
@@ -1091,9 +889,7 @@ export default function StockCardPage() {
     try {
       const raw = localStorage.getItem(SESSION_KEY);
       if (raw) setSession(JSON.parse(raw));
-    } catch {
-      // ignore parse error, treat as ไม่ได้ล็อกอิน
-    }
+    } catch { }
     setCheckedSession(true);
   }, []);
 
@@ -1102,13 +898,8 @@ export default function StockCardPage() {
     setSession(null);
   };
 
-  if (!checkedSession) {
-    return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-400">กำลังโหลด...</div>;
-  }
-
-  if (!session) {
-    return <LoginScreen onLogin={setSession} />;
-  }
+  if (!checkedSession) return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-400">กำลังโหลด...</div>;
+  if (!session) return <LoginScreen onLogin={setSession} />;
 
   return <StockCardApp session={session} onLogout={handleLogout} />;
 }
