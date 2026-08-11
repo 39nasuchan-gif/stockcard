@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { PackagePlus, PackageMinus, CalendarDays, Calculator, X, History, User } from 'lucide-react';
+import { PackagePlus, PackageMinus, CalendarDays, Calculator, X, History, User, TrendingDown, CalendarRange } from 'lucide-react';
 
 export default function MedicineDetailPage() {
   const { id } = useParams();
@@ -27,20 +27,79 @@ export default function MedicineDetailPage() {
   const [historyRows, setHistoryRows] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  // States สำหรับคำนวณการใช้ยา
+  const [outHistory, setOutHistory] = useState<any[]>([]);
+  const [periodMode, setPeriodMode] = useState<'1m' | '2m' | '3m' | 'custom'>('1m');
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
   const fetchMedicine = async () => {
-    const { data, error } = await supabase
+    // ดึงข้อมูลยาหลัก และล็อต
+    const { data: medData } = await supabase
       .from('medicines')
       .select('*, medicine_lots (*)')
       .eq('id', id)
       .single();
       
-    if (data) setMedicine(data);
+    if (medData) setMedicine(medData);
+
+    // ดึงประวัติการตัดจ่ายทั้งหมดของยานี้มาเพื่อใช้คำนวณ
+    const { data: outData } = await supabase
+      .from('stock_transactions')
+      .select('*')
+      .eq('medicine_id', String(id))
+      .eq('action', 'out');
+      
+    if (outData) setOutHistory(outData);
     setLoading(false);
   };
 
   useEffect(() => {
     fetchMedicine();
   }, [id]);
+
+  // จัดการตั้งคาวันที่อัตโนมัติ
+  useEffect(() => {
+    if (periodMode !== 'custom') {
+      const end = new Date();
+      const start = new Date();
+      if (periodMode === '1m') start.setMonth(start.getMonth() - 1);
+      if (periodMode === '2m') start.setMonth(start.getMonth() - 2);
+      if (periodMode === '3m') start.setMonth(start.getMonth() - 3);
+
+      setEndDate(end.toISOString().split('T')[0]);
+      setStartDate(start.toISOString().split('T')[0]);
+    }
+  }, [periodMode]);
+
+  // ฟังก์ชันคำนวณอัตราการใช้ยา
+  const stats = useMemo(() => {
+    if (!startDate || !endDate) return { totalUsage: 0, recommend1W: 0, recommend2W: 0, daysDiff: 0, dailyRate: 0 };
+    
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+
+    let daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysDiff < 1) daysDiff = 1;
+
+    const filteredOut = outHistory.filter(tx => {
+      const txDate = new Date(tx.created_at);
+      return txDate >= start && txDate <= end;
+    });
+
+    const totalUsage = filteredOut.reduce((sum, tx) => sum + tx.amount, 0);
+    const dailyRate = totalUsage / daysDiff;
+
+    const week1Need = dailyRate * 7;
+    const week2Need = dailyRate * 14;
+
+    const recommend1W = Math.ceil(week1Need * 1.15);
+    const recommend2W = Math.ceil(week2Need * 1.15);
+
+    return { totalUsage, recommend1W, recommend2W, daysDiff, dailyRate };
+  }, [startDate, endDate, outHistory]);
 
   const openStockModal = (action: 'in' | 'out') => {
     setStockAction(action);
@@ -144,14 +203,30 @@ export default function MedicineDetailPage() {
   const activeLots = (medicine.medicine_lots || [])
     .filter((l: any) => l.current_stock > 0)
     .sort((a: any, b: any) => new Date(a.exp_date).getTime() - new Date(b.exp_date).getTime());
+    
+  // ดึงหน่วยนับและขนาดบรรจุหลักมาใช้คำนวณ
+  const mainPackSize = activeLots.length > 0 ? activeLots[0].pack_size : (medicine.medicine_lots?.[0]?.pack_size || 100);
+  const mainUnit = activeLots.length > 0 ? activeLots[0].unit_name : (medicine.medicine_lots?.[0]?.unit_name || 'หน่วย');
+
+  // ฟังก์ชันแปลงจำนวนชิ้นเป็นกล่อง/แพ็ค
+  const formatToPack = (total: number) => {
+    if (mainPackSize <= 1 || total === 0) return null;
+    const packs = Math.floor(total / mainPackSize);
+    const remainder = total % mainPackSize;
+    
+    if (packs === 0) return null; // ไม่ถึง 1 กล่อง ไม่ต้องแสดง
+    
+    let text = `≈ ${packs} กล่อง`;
+    if (remainder > 0) text += ` ${remainder} ${mainUnit}`;
+    return text;
+  };
 
   return (
-    <div className="p-6 max-w-xl mx-auto mt-10 bg-white rounded-2xl shadow-md border border-gray-100">
-      <button onClick={() => router.push('/')} className="mb-6 text-blue-600 hover:underline text-sm font-medium">
+    <div className="p-6 max-w-xl mx-auto mt-6 mb-10 bg-white rounded-2xl shadow-md border border-gray-100">
+      <button onClick={() => router.push('/')} className="mb-4 text-blue-600 hover:underline text-sm font-medium">
         &larr; กลับหน้าหลักคลังยา
       </button>
       
-      {/* คลิกที่ชื่อยาเพื่อเปิดดูประวัติการรับเข้า/ตัดจ่าย */}
       <h1 
         onClick={openHistoryModal}
         className="text-3xl font-bold text-gray-800 mb-1 cursor-pointer hover:text-blue-600 hover:underline w-fit"
@@ -160,6 +235,55 @@ export default function MedicineDetailPage() {
         {medicine.name} 📜
       </h1>
       <p className="text-sm text-gray-500 mb-6">บาร์โค้ด: {medicine.barcode || '-'}</p>
+
+      {/* ส่วนสถิติการใช้ยาและการคำนวณ */}
+      <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 mb-6">
+        <h2 className="text-sm font-bold text-blue-900 mb-3 flex items-center gap-1.5">
+          <TrendingDown size={18} /> สถิติการใช้ยา & วางแผนสั่งซื้อ
+        </h2>
+        
+        <div className="flex flex-wrap gap-2 mb-3">
+          <button onClick={() => setPeriodMode('1m')} className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${periodMode === '1m' ? 'bg-blue-600 text-white' : 'bg-white border text-gray-600'}`}>1 เดือน</button>
+          <button onClick={() => setPeriodMode('2m')} className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${periodMode === '2m' ? 'bg-blue-600 text-white' : 'bg-white border text-gray-600'}`}>2 เดือน</button>
+          <button onClick={() => setPeriodMode('3m')} className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${periodMode === '3m' ? 'bg-blue-600 text-white' : 'bg-white border text-gray-600'}`}>3 เดือน</button>
+          <button onClick={() => setPeriodMode('custom')} className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${periodMode === 'custom' ? 'bg-blue-600 text-white' : 'bg-white border text-gray-600'}`}>กำหนดเอง</button>
+        </div>
+
+        {periodMode === 'custom' && (
+          <div className="flex items-center gap-2 mb-4 bg-white p-2 rounded-lg border border-blue-100">
+            <CalendarRange size={16} className="text-blue-500" />
+            <input type="date" className="text-sm bg-transparent outline-none w-full text-gray-700" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <span className="text-gray-400">-</span>
+            <input type="date" className="text-sm bg-transparent outline-none w-full text-gray-700" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          </div>
+        )}
+
+        <div className="bg-white rounded-lg p-3 border border-blue-100 space-y-3">
+          <div className="flex justify-between items-center border-b border-gray-50 pb-3">
+            <span className="text-sm text-gray-500 font-medium">ยอดใช้รวม ({stats.daysDiff} วัน)</span>
+            <div className="text-right">
+              <div className="font-bold text-gray-800 text-xl">{stats.totalUsage} <span className="text-sm font-normal text-gray-500">{mainUnit}</span></div>
+              {formatToPack(stats.totalUsage) && <div className="text-[11px] font-medium text-blue-600 mt-0.5">{formatToPack(stats.totalUsage)}</div>}
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-3 pt-1">
+            <div className="bg-amber-50 rounded-lg p-3">
+              <div className="text-xs text-amber-700 font-bold mb-1">ควรมี 1 สัปดาห์</div>
+              <div className="text-base font-bold text-amber-900">{stats.recommend1W} <span className="text-[10px] font-normal">{mainUnit}</span></div>
+              {formatToPack(stats.recommend1W) && <div className="text-[10px] font-medium text-amber-700 mt-0.5">{formatToPack(stats.recommend1W)}</div>}
+              <div className="text-[9px] text-amber-600/80 mt-1.5">+ เผื่อ 15% แล้ว</div>
+            </div>
+            
+            <div className="bg-emerald-50 rounded-lg p-3">
+              <div className="text-xs text-emerald-700 font-bold mb-1">ควรมี 2 สัปดาห์</div>
+              <div className="text-base font-bold text-emerald-900">{stats.recommend2W} <span className="text-[10px] font-normal">{mainUnit}</span></div>
+              {formatToPack(stats.recommend2W) && <div className="text-[10px] font-medium text-emerald-700 mt-0.5">{formatToPack(stats.recommend2W)}</div>}
+              <div className="text-[9px] text-emerald-600/80 mt-1.5">+ เผื่อ 15% แล้ว</div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 mb-6">
         <h2 className="text-sm font-semibold text-gray-600 mb-3">📦 สต็อกคงเหลือแยกตามล็อต (EXP)</h2>
@@ -182,10 +306,10 @@ export default function MedicineDetailPage() {
       </div>
 
       <div className="flex gap-4">
-        <button onClick={() => openStockModal('in')} className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition-colors">
+        <button onClick={() => openStockModal('in')} className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition-colors shadow-sm">
           <PackagePlus size={18} /> รับเข้า
         </button>
-        <button onClick={() => openStockModal('out')} className="flex-1 flex items-center justify-center gap-2 bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 transition-colors">
+        <button onClick={() => openStockModal('out')} className="flex-1 flex items-center justify-center gap-2 bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 transition-colors shadow-sm">
           <PackageMinus size={18} /> ตัดจ่าย
         </button>
       </div>
