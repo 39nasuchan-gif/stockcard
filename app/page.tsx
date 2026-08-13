@@ -857,11 +857,11 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
                   <th className="p-3 md:p-4 font-semibold text-gray-600 w-24">จัดการ</th>
-                  <th className="p-3 md:p-4 font-semibold text-gray-600 text-center w-32">QR Code</th>
                   <th className="p-3 md:p-4 font-semibold text-gray-600 w-1/4">รหัส/ชื่อยา</th>
+                  <th className="p-3 md:p-4 font-semibold text-gray-600 text-center w-32">รับเข้า/ตัดจ่าย</th>
                   <th className="p-3 md:p-4 font-semibold text-gray-600">คงเหลือ (แยกตาม EXP)</th>
                   <th className="p-3 md:p-4 font-semibold text-gray-600 w-56">สถิติ & รอบเบิก (1 / 2 สัปดาห์)</th>
-                  <th className="p-3 md:p-4 font-semibold text-gray-600 text-center w-32">รับเข้า/ตัดจ่าย</th>
+                  <th className="p-3 md:p-4 font-semibold text-gray-600 text-center w-32">QR Code</th>
                 </tr>
               </thead>
               <tbody>
@@ -877,6 +877,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
 
                    return (
                     <tr key={med.id} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
+                      {/* คอลัมน์ที่ 1: จัดการ */}
                       <td className="p-3 md:p-4 align-top">
                         <div className="flex gap-2">
                           <button onClick={() => openEditMedModal(med)} className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-blue-100 hover:text-blue-700 transition-colors"><Edit size={16} /></button>
@@ -884,21 +885,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                         </div>
                       </td>
                       
-                      <td className="p-3 md:p-4 text-center align-top">
-                        <div className="flex flex-col items-center justify-center p-2 bg-white rounded-lg border border-gray-200 shadow-sm mx-auto w-fit">
-                          <QRCodeSVG 
-                            value={`${typeof window !== 'undefined' ? window.location.origin : ''}/medicine/${med.id}`} 
-                            size={64} 
-                          />
-                          <button 
-                            onClick={() => window.print()} 
-                            className="mt-2 px-2 py-1 bg-blue-50 text-blue-600 text-[10px] md:text-xs font-semibold rounded hover:bg-blue-100 transition-colors w-full"
-                          >
-                            พิมพ์ QR
-                          </button>
-                        </div>
-                      </td>
-
+                      {/* คอลัมน์ที่ 2: รหัส/ชื่อยา */}
                       <td className="p-3 md:p-4 align-top">
                         <div
                           onClick={() => openHistoryModal(med)}
@@ -911,6 +898,15 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                         <div className="text-[10px] md:text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-md w-fit">ตู้ยา: {categories[Number(med.cabinet_category)] || med.cabinet_category || "-"}</div>
                       </td>
 
+                      {/* คอลัมน์ที่ 3: รับเข้า/ตัดจ่าย */}
+                      <td className="p-3 md:p-4 align-top text-center">
+                        <div className="flex justify-center gap-2 mt-1">
+                          <button onClick={() => openStockModal(med, 'in')} className="p-2.5 md:p-3 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 shadow-sm transition-colors" title="รับเข้า"><PackagePlus size={20} /></button>
+                          <button onClick={() => openStockModal(med, 'out')} className="p-2.5 md:p-3 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 shadow-sm transition-colors" title="ตัดจ่าย"><PackageMinus size={20} /></button>
+                        </div>
+                      </td>
+
+                      {/* คอลัมน์ที่ 4: คงเหลือ (แยกตาม EXP) */}
                       <td className="p-3 md:p-4 align-top">
                         {activeLots.length === 0 ? (
                           <span className="text-red-500 text-sm font-bold px-3 py-1 bg-red-50 rounded-lg border border-red-100">สต็อกหมด</span>
@@ -938,6 +934,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                         )}
                       </td>
 
+                      {/* คอลัมน์ที่ 5: สถิติ & แผนสั่งซื้อ */}
                       <td className="p-3 md:p-4 align-top">
                         <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-200 text-xs space-y-1.5">
                           <div className="flex justify-between border-b pb-1">
@@ -964,10 +961,19 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                         </div>
                       </td>
 
-                      <td className="p-3 md:p-4 align-top text-center">
-                        <div className="flex justify-center gap-2 mt-1">
-                          <button onClick={() => openStockModal(med, 'in')} className="p-2.5 md:p-3 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 shadow-sm transition-colors" title="รับเข้า"><PackagePlus size={20} /></button>
-                          <button onClick={() => openStockModal(med, 'out')} className="p-2.5 md:p-3 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 shadow-sm transition-colors" title="ตัดจ่าย"><PackageMinus size={20} /></button>
+                      {/* คอลัมน์ที่ 6: QR Code (ย้ายมาขวาสุด) */}
+                      <td className="p-3 md:p-4 text-center align-top">
+                        <div className="flex flex-col items-center justify-center p-2 bg-white rounded-lg border border-gray-200 shadow-sm mx-auto w-fit">
+                          <QRCodeSVG 
+                            value={`${typeof window !== 'undefined' ? window.location.origin : ''}/medicine/${med.id}`} 
+                            size={64} 
+                          />
+                          <button 
+                            onClick={() => window.print()} 
+                            className="mt-2 px-2 py-1 bg-blue-50 text-blue-600 text-[10px] md:text-xs font-semibold rounded hover:bg-blue-100 transition-colors w-full"
+                          >
+                            พิมพ์ QR
+                          </button>
                         </div>
                       </td>
 
