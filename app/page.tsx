@@ -6,6 +6,7 @@ import {
   Plus, PackagePlus, PackageMinus, X, Calculator, Edit, Trash2, CalendarDays,
   User, Users, Lock, LogOut, KeyRound, ShieldCheck, CheckCircle2, CircleDashed,
   Search, Tag, Check, LayoutGrid, History, TrendingDown, CalendarRange,
+  FileText, Printer
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -441,11 +442,18 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   const [historyRows, setHistoryRows] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  // States สำหรับการคำนวณสถิติภาพรวมในหน้ารวม
+  // States สำหรับสถิติหน้าแรก
   const [allTransactions, setAllTransactions] = useState<any[]>([]);
   const [globalPeriodMode, setGlobalPeriodMode] = useState<'1m' | '2m' | '3m' | 'custom'>('1m');
   const [globalStartDate, setGlobalStartDate] = useState("");
   const [globalEndDate, setGlobalEndDate] = useState("");
+
+  // States สำหรับ Print Report (Stock Card)
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [reportTargetId, setReportTargetId] = useState("all");
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [showPrintView, setShowPrintView] = useState(false);
+  const [printData, setPrintData] = useState<any>({});
 
   const fetchMedicines = async () => {
     try {
@@ -715,8 +723,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
 
     const totalUsage = medTx.reduce((sum, tx) => sum + tx.amount, 0);
     const dailyRate = totalUsage / daysDiff;
-
-    // คำนวณรอบ 1 สัปดาห์ และ 2 สัปดาห์ พร้อมเผื่อ Safety Stock 15%
     const target1Week = Math.ceil(dailyRate * 7 * 1.15);
     const target2Weeks = Math.ceil(dailyRate * 14 * 1.15);
 
@@ -738,6 +744,145 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     return text;
   };
 
+  // ----------------------------------------------------
+  // ฟังก์ชันสร้างข้อมูลสำหรับรายงาน Stock Card PDF
+  // ----------------------------------------------------
+  const handleGenerateReport = async () => {
+    setIsGeneratingReport(true);
+    try {
+      let query = supabase.from("stock_transactions").select("*").order("created_at", { ascending: false });
+      if (reportTargetId !== "all") {
+        query = query.eq("medicine_id", reportTargetId);
+      }
+      
+      const { data: txData, error } = await query;
+      if (error) throw error;
+
+      const grouped: any = {};
+      const medsToProcess = reportTargetId === "all" ? medicines : medicines.filter(m => m.id.toString() === reportTargetId);
+      
+      medsToProcess.forEach(med => {
+         // คำนวณสต็อกปัจจุบันรวมทั้งหมดของยาตัวนี้
+         let currentTotalStock = (med.medicine_lots || []).reduce((sum: number, lot: any) => sum + lot.current_stock, 0);
+         const medTxs = (txData || []).filter(tx => tx.medicine_id.toString() === med.id.toString());
+         
+         // คำนวณ Balance ย้อนหลังจากสต็อกปัจจุบัน (ย้อนกลับเพื่อหาอดีต)
+         let runningBal = currentTotalStock;
+         const processedTxs = medTxs.map(tx => {
+             const balanceAfter = runningBal; // ยอดยกไป หลังจากทำรายการนี้
+             // คำนวณหา ยอดยกมา ก่อนหน้าทำรายการนี้
+             if (tx.action === 'in') runningBal -= tx.amount;
+             if (tx.action === 'out') runningBal += tx.amount;
+             
+             // ดึงข้อมูลหน่วยและขนาดแพ็คเพื่อแสดงในรายงาน
+             const lotInfo = (med.medicine_lots || []).find((l: any) => l.id.toString() === tx.lot_id?.toString());
+             const pUnit = lotInfo?.unit_name || 'หน่วย';
+             
+             return { ...tx, balanceAfter, pUnit, lotExp: tx.exp_date };
+         });
+
+         grouped[med.id] = {
+            medName: med.name,
+            hosxp: med.hosxp_icode,
+            barcode: med.barcode,
+            transactions: processedTxs.reverse() // กลับเป็นจากอดีต->ปัจจุบัน
+         };
+      });
+
+      setPrintData(grouped);
+      setShowPrintView(true);
+      setIsReportModalOpen(false);
+    } catch(e: any) {
+      alert("เกิดข้อผิดพลาดในการดึงข้อมูลรายงาน: " + e.message);
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+
+  // ----------------------------------------------------
+  // มุมมองสำหรับหน้า Print (ซ่อนส่วนอื่นๆ ทั้งหมด)
+  // ----------------------------------------------------
+  if (showPrintView) {
+    return (
+      <div className="bg-white min-h-screen text-black print:p-0 p-8">
+        <div className="max-w-5xl mx-auto">
+          <div className="print:hidden flex justify-between items-center mb-6 bg-gray-100 p-4 rounded-xl">
+            <div>
+              <h1 className="text-xl font-bold">ตัวอย่างก่อนพิมพ์ (Print Preview)</h1>
+              <p className="text-sm text-gray-500">กดปุ่ม พิมพ์ / Save PDF เพื่อบันทึกไฟล์</p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setShowPrintView(false)} className="px-4 py-2 border rounded-lg font-medium hover:bg-gray-200">ปิด</button>
+              <button onClick={() => window.print()} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium flex items-center gap-2"><Printer size={18}/> พิมพ์ / Save PDF</button>
+            </div>
+          </div>
+
+          <div className="print-content">
+            <h1 className="text-2xl font-bold text-center mb-2">รายงานประวัติการใช้ยา (Stock Card)</h1>
+            <p className="text-center text-sm text-gray-600 mb-8">พิมพ์วันที่: {new Date().toLocaleString("th-TH")}</p>
+
+            {Object.values(printData).map((medData: any) => (
+              <div key={medData.medName} className="mb-10 page-break-after-avoid">
+                <div className="mb-3 border-b-2 border-black pb-2">
+                  <h2 className="text-xl font-bold">{medData.medName}</h2>
+                  <div className="text-sm">รหัส HosXP: {medData.hosxp || "-"} | บาร์โค้ด: {medData.barcode || "-"}</div>
+                </div>
+                
+                {medData.transactions.length === 0 ? (
+                  <p className="text-sm text-gray-500 italic py-4">ไม่มีประวัติการทำรายการ</p>
+                ) : (
+                  <table className="w-full text-sm text-left border-collapse border border-gray-400">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="border border-gray-400 p-2">วันที่ทำรายการ</th>
+                        <th className="border border-gray-400 p-2 text-center">รับเข้า</th>
+                        <th className="border border-gray-400 p-2 text-center">ตัดจ่าย</th>
+                        <th className="border border-gray-400 p-2 text-center">ยอดยกไป (คงเหลือ)</th>
+                        <th className="border border-gray-400 p-2">ผู้ดำเนินการ</th>
+                        <th className="border border-gray-400 p-2">หมายเหตุ (EXP)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {medData.transactions.map((tx: any, idx: number) => (
+                        <tr key={tx.id} className="border border-gray-400">
+                          <td className="border border-gray-400 p-2">{formatHistoryDate(tx.created_at)}</td>
+                          <td className="border border-gray-400 p-2 text-center text-emerald-700 font-medium">
+                            {tx.action === 'in' ? `${tx.amount} ${tx.pUnit}` : '-'}
+                          </td>
+                          <td className="border border-gray-400 p-2 text-center text-red-700 font-medium">
+                            {tx.action === 'out' ? `${tx.amount} ${tx.pUnit}` : '-'}
+                          </td>
+                          <td className="border border-gray-400 p-2 text-center font-bold">
+                            {tx.balanceAfter} {tx.pUnit}
+                          </td>
+                          <td className="border border-gray-400 p-2">{tx.staff_name}</td>
+                          <td className="border border-gray-400 p-2 text-gray-600 text-xs">EXP: {tx.lotExp}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <style dangerouslySetInnerHTML={{__html: `
+          @media print {
+            body { background: white; margin: 0; padding: 0; }
+            .print\\:hidden { display: none !important; }
+            table { page-break-inside: auto; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+            .page-break-after-avoid { page-break-after: auto; }
+          }
+        `}} />
+      </div>
+    );
+  }
+
+  // ----------------------------------------------------
+  // หน้าหลัก (Main UI)
+  // ----------------------------------------------------
   return (
     <div className="min-h-screen bg-gray-50 p-2 md:p-8">
       <div className="max-w-7xl mx-auto">
@@ -760,15 +905,15 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
           </div>
           
           <div className="flex flex-wrap md:flex-nowrap items-center gap-2 w-full md:w-auto mt-2 md:mt-0">
-            <button onClick={openAddMedModal} className="flex-1 md:flex-none flex justify-center items-center gap-1 md:gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2.5 md:px-4 md:py-2 rounded-lg font-medium transition-colors text-sm md:text-base shadow-sm">
-              <Plus size={18} /> เพิ่มรายการยาใหม่
+            {/* ปุ่มรายงาน Stock Card (ย้ายมาอยู่ด้านบน) */}
+            <button onClick={() => setIsReportModalOpen(true)} className="flex-1 md:flex-none flex justify-center items-center gap-1.5 md:gap-2 bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 px-3 py-2.5 md:px-4 md:py-2 rounded-lg font-medium transition-colors text-sm md:text-base">
+              <FileText size={18} /> พิมพ์รายงาน
+            </button>
+            <button onClick={openAddMedModal} className="flex-1 md:flex-none flex justify-center items-center gap-1.5 md:gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2.5 md:px-4 md:py-2 rounded-lg font-medium transition-colors text-sm md:text-base shadow-sm">
+              <Plus size={18} /> เพิ่มรายการยา
             </button>
             {session.isCentral && (
-              <button
-                onClick={() => setIsAdminModalOpen(true)}
-                title="จัดการรหัสผ่านเจ้าหน้าที่"
-                className="p-2.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-blue-100 hover:text-blue-700 transition-colors shrink-0"
-              >
+              <button onClick={() => setIsAdminModalOpen(true)} title="จัดการรหัสผ่าน" className="p-2.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-blue-100 hover:text-blue-700 transition-colors shrink-0">
                 <ShieldCheck size={20} />
               </button>
             )}
@@ -877,7 +1022,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
 
                    return (
                     <tr key={med.id} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
-                      {/* คอลัมน์ที่ 1: จัดการ */}
                       <td className="p-3 md:p-4 align-top">
                         <div className="flex gap-2">
                           <button onClick={() => openEditMedModal(med)} className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-blue-100 hover:text-blue-700 transition-colors"><Edit size={16} /></button>
@@ -885,7 +1029,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                         </div>
                       </td>
                       
-                      {/* คอลัมน์ที่ 2: รหัส/ชื่อยา */}
                       <td className="p-3 md:p-4 align-top">
                         <div
                           onClick={() => openHistoryModal(med)}
@@ -894,11 +1037,14 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                         >
                           {med.name}
                         </div>
-                        <div className="text-xs md:text-sm text-gray-500 mb-0.5">บาร์โค้ด: {med.barcode || "-"}</div>
+                        {/* แสดง HosXP พร้อมกับ Barcode */}
+                        <div className="text-[11px] md:text-xs text-gray-500 mb-1 leading-snug">
+                          บาร์โค้ด: {med.barcode || "-"} <br/> 
+                          รหัส HosXP: <span className="font-semibold text-gray-700">{med.hosxp_icode || "-"}</span>
+                        </div>
                         <div className="text-[10px] md:text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-md w-fit">ตู้ยา: {categories[Number(med.cabinet_category)] || med.cabinet_category || "-"}</div>
                       </td>
 
-                      {/* คอลัมน์ที่ 3: รับเข้า/ตัดจ่าย */}
                       <td className="p-3 md:p-4 align-top text-center">
                         <div className="flex justify-center gap-2 mt-1">
                           <button onClick={() => openStockModal(med, 'in')} className="p-2.5 md:p-3 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 shadow-sm transition-colors" title="รับเข้า"><PackagePlus size={20} /></button>
@@ -906,7 +1052,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                         </div>
                       </td>
 
-                      {/* คอลัมน์ที่ 4: คงเหลือ (แยกตาม EXP) */}
                       <td className="p-3 md:p-4 align-top">
                         {activeLots.length === 0 ? (
                           <span className="text-red-500 text-sm font-bold px-3 py-1 bg-red-50 rounded-lg border border-red-100">สต็อกหมด</span>
@@ -934,7 +1079,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                         )}
                       </td>
 
-                      {/* คอลัมน์ที่ 5: สถิติ & แผนสั่งซื้อ */}
                       <td className="p-3 md:p-4 align-top">
                         <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-200 text-xs space-y-1.5">
                           <div className="flex justify-between border-b pb-1">
@@ -961,7 +1105,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                         </div>
                       </td>
 
-                      {/* คอลัมน์ที่ 6: QR Code (ย้ายมาขวาสุด) */}
                       <td className="p-3 md:p-4 text-center align-top">
                         <div className="flex flex-col items-center justify-center p-2 bg-white rounded-lg border border-gray-200 shadow-sm mx-auto w-fit">
                           <QRCodeSVG 
@@ -1013,6 +1156,41 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                   <button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-medium transition-colors">{isEditing ? 'บันทึกการแก้ไข' : 'บันทึกยาใหม่'}</button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal เลือกเงื่อนไขออกรายงาน PDF */}
+        {isReportModalOpen && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden">
+              <div className="flex justify-between items-center p-5 border-b bg-blue-50 border-blue-100">
+                <h2 className="text-lg font-bold flex items-center gap-2 text-blue-900">
+                  <FileText size={18} /> พิมพ์รายงาน Stock Card
+                </h2>
+                <button onClick={() => setIsReportModalOpen(false)} className="p-1 hover:bg-blue-100 rounded-md transition-colors"><X size={20} className="text-blue-500" /></button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-gray-700">เลือกรายการที่ต้องการพิมพ์</label>
+                  <select 
+                    className="w-full border border-gray-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    value={reportTargetId}
+                    onChange={(e) => setReportTargetId(e.target.value)}
+                  >
+                    <option value="all">-- พิมพ์ยาทั้งหมด --</option>
+                    {medicines.map(m => (
+                      <option key={m.id} value={m.id}>{m.name} {m.hosxp_icode ? `(${m.hosxp_icode})` : ''}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="pt-4 flex gap-3">
+                  <button onClick={() => setIsReportModalOpen(false)} className="flex-1 border border-gray-300 p-3 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors">ยกเลิก</button>
+                  <button onClick={handleGenerateReport} disabled={isGeneratingReport} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-medium transition-colors disabled:opacity-60 flex justify-center items-center gap-2">
+                    {isGeneratingReport ? "กำลังดึงข้อมูล..." : <><Printer size={18}/> สร้าง PDF</>}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -1134,6 +1312,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
           </div>
         )}
 
+        {/* Modal ประวัติการทำรายการ (แสดงในรูปแบบแพ็คด้วย) */}
         {isHistoryModalOpen && historyMed && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden max-h-[85vh] flex flex-col">
@@ -1152,27 +1331,39 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                 ) : historyRows.length === 0 ? (
                   <div className="text-center text-gray-500 py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">ยังไม่มีประวัติการรับเข้า/ตัดจ่าย</div>
                 ) : (
-                  historyRows.map((row: any) => (
-                    <div key={row.id} className="flex items-start justify-between border border-gray-100 bg-white rounded-xl p-3 md:p-4 shadow-sm">
-                      <div className="flex items-start gap-3">
-                        <div className={`p-2 rounded-lg mt-0.5 ${row.action === 'in' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                          {row.action === 'in' ? <PackagePlus size={18} /> : <PackageMinus size={18} />}
+                  historyRows.map((row: any) => {
+                    const isInc = row.action === 'in';
+                    const lotInfo = (historyMed.medicine_lots || []).find((l: any) => l.id.toString() === row.lot_id?.toString());
+                    const pSize = lotInfo?.pack_size || 100;
+                    const pUnit = lotInfo?.unit_name || 'หน่วย';
+                    const fPacks = Math.floor(row.amount / pSize);
+                    const fRem = row.amount % pSize;
+
+                    return (
+                      <div key={row.id} className="flex items-start justify-between border border-gray-100 bg-white rounded-xl p-3 md:p-4 shadow-sm">
+                        <div className="flex items-start gap-3">
+                          <div className={`p-2 rounded-lg mt-0.5 ${isInc ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                            {isInc ? <PackagePlus size={18} /> : <PackageMinus size={18} />}
+                          </div>
+                          <div>
+                            <div className={`text-sm md:text-base font-bold ${isInc ? 'text-emerald-700' : 'text-red-700'}`}>
+                              {isInc ? 'รับเข้า' : 'ตัดจ่าย'} {row.amount} {pUnit}
+                            </div>
+                            <div className="text-xs font-medium text-blue-600 mt-0.5">
+                              (≈ {fPacks} กล่อง {fRem > 0 ? `เศษ ${fRem}` : ''})
+                            </div>
+                            <div className="text-xs md:text-sm text-gray-500 flex items-center gap-1 mt-1">
+                              <CalendarDays size={12} /> EXP: {row.exp_date || "-"}
+                            </div>
+                            <div className="text-[10px] md:text-xs text-gray-400 mt-1">{formatHistoryDate(row.created_at)}</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className={`text-sm md:text-base font-bold ${row.action === 'in' ? 'text-emerald-700' : 'text-red-700'}`}>
-                            {row.action === 'in' ? 'รับเข้า' : 'ตัดจ่าย'} {row.amount} หน่วย
-                          </div>
-                          <div className="text-xs md:text-sm text-gray-500 flex items-center gap-1 mt-1">
-                            <CalendarDays size={12} /> EXP: {row.exp_date || "-"}
-                          </div>
-                          <div className="text-[10px] md:text-xs text-gray-400 mt-1">{formatHistoryDate(row.created_at)}</div>
+                        <div className="flex items-center gap-1 text-[10px] md:text-xs font-medium text-gray-600 bg-gray-100 px-2.5 py-1 rounded-full shrink-0">
+                          <User size={12} /> {row.staff_name}
                         </div>
                       </div>
-                      <div className="flex items-center gap-1 text-[10px] md:text-xs font-medium text-gray-600 bg-gray-100 px-2.5 py-1 rounded-full shrink-0">
-                        <User size={12} /> {row.staff_name}
-                      </div>
-                    </div>
-                  ))
+                    )
+                  })
                 )}
               </div>
             </div>
