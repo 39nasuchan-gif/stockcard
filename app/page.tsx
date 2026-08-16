@@ -419,7 +419,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   const [isStockModalOpen, setIsStockModalOpen] = useState(false);
   const [selectedMed, setSelectedMed] = useState<any>(null);
   const [stockAction, setStockAction] = useState<'in' | 'out'>('in');
-  const [stockInMode, setStockInMode] = useState<'existing' | 'new'>('existing'); // Mode รับเข้าสต็อก (เดิม/ใหม่)
+  const [stockInMode, setStockInMode] = useState<'existing' | 'new'>('existing'); 
   const [stockExpDate, setStockExpDate] = useState("");
   const [stockPackSize, setStockPackSize] = useState("100");
   const [stockUnitName, setStockUnitName] = useState("'s");
@@ -443,21 +443,19 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   const [historyRows, setHistoryRows] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  // States สำหรับสถิติหน้าแรก
   const [allTransactions, setAllTransactions] = useState<any[]>([]);
   const [globalPeriodMode, setGlobalPeriodMode] = useState<'1m' | '2m' | '3m' | 'custom'>('1m');
   const [globalStartDate, setGlobalStartDate] = useState("");
   const [globalEndDate, setGlobalEndDate] = useState("");
 
-  // States สำหรับ Print Report (Stock Card)
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [reportTargetId, setReportTargetId] = useState("all");
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [showPrintView, setShowPrintView] = useState(false);
   const [printData, setPrintData] = useState<any>({});
 
-  // States สำหรับ Print QR Code
   const [isQRModalOpen, setIsQRModalOpen] = useState(false);
+  const [qrTargetCategory, setQrTargetCategory] = useState<number | "all">("all");
   const [qrTargetId, setQrTargetId] = useState("all");
   const [showQRPrintView, setShowQRPrintView] = useState(false);
   const [qrPrintData, setQrPrintData] = useState<any[]>([]);
@@ -503,7 +501,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
 
   useEffect(() => { fetchMedicines(); fetchCategories(); }, []);
 
-  // Update historyMed if medicines changes
   useEffect(() => {
     if (isHistoryModalOpen && historyMed) {
       const updated = medicines.find(m => m.id === historyMed.id);
@@ -682,7 +679,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
       setIsStockModalOpen(false);
       await fetchMedicines();
       if (isHistoryModalOpen) {
-         openHistoryModal(selectedMed); // Re-fetch history to update the view seamlessly
+         openHistoryModal(selectedMed); 
       }
     } catch (error: any) {
       alert("อัปเดตสต็อกไม่สำเร็จ: " + error.message);
@@ -841,7 +838,18 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   // ฟังก์ชันสร้างข้อมูลสำหรับ Print QR Codes
   // ----------------------------------------------------
   const handleGenerateQRPrint = () => {
-    const medsToPrint = qrTargetId === "all" ? medicines : medicines.filter(m => m.id.toString() === qrTargetId);
+    let medsToPrint = medicines;
+    
+    // กรองตามตู้ยาก่อน ถ้ามีการเลือก
+    if (qrTargetCategory !== "all") {
+      medsToPrint = medsToPrint.filter(m => String(m.cabinet_category) === String(qrTargetCategory));
+    }
+    
+    // กรองตามรายชื่อยา
+    if (qrTargetId !== "all") {
+      medsToPrint = medsToPrint.filter(m => m.id.toString() === qrTargetId);
+    }
+
     setQrPrintData(medsToPrint);
     setShowQRPrintView(true);
     setIsQRModalOpen(false);
@@ -1293,16 +1301,35 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
               </div>
               <div className="p-6 space-y-4">
                 <div>
+                  <label className="block text-sm font-medium mb-2 text-gray-700">เลือกตู้ยา (Cabinet)</label>
+                  <select 
+                    className="w-full border border-gray-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                    value={qrTargetCategory}
+                    onChange={(e) => {
+                      setQrTargetCategory(e.target.value === "all" ? "all" : Number(e.target.value));
+                      setQrTargetId("all"); // รีเซ็ตชื่อยาเมื่อเปลี่ยนตู้
+                    }}
+                  >
+                    <option value="all">-- ทุกตู้ยา --</option>
+                    {CATEGORY_IDS.map(id => (
+                      <option key={id} value={id}>{categories[id] || `ตู้ยา ${id}`}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm font-medium mb-2 text-gray-700">เลือกรายการยาที่ต้องการพิมพ์ QR</label>
                   <select 
                     className="w-full border border-gray-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
                     value={qrTargetId}
                     onChange={(e) => setQrTargetId(e.target.value)}
                   >
-                    <option value="all">-- พิมพ์ QR ยาทั้งหมด --</option>
-                    {medicines.map(m => (
-                      <option key={m.id} value={m.id}>{m.name} {m.hosxp_icode ? `(${m.hosxp_icode})` : ''}</option>
-                    ))}
+                    <option value="all">-- พิมพ์ทั้งหมด (ตามตู้ที่เลือก) --</option>
+                    {medicines
+                      .filter(m => qrTargetCategory === "all" || String(m.cabinet_category) === String(qrTargetCategory))
+                      .map(m => (
+                        <option key={m.id} value={m.id}>{m.name} {m.hosxp_icode ? `(${m.hosxp_icode})` : ''}</option>
+                      ))
+                    }
                   </select>
                 </div>
                 <div className="pt-4 flex gap-3">
