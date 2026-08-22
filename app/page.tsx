@@ -6,9 +6,10 @@ import {
   Plus, PackagePlus, PackageMinus, X, Calculator, Edit, Trash2, CalendarDays,
   User, Users, Lock, LogOut, KeyRound, ShieldCheck, CheckCircle2, CircleDashed,
   Search, Tag, Check, LayoutGrid, History, TrendingDown, CalendarRange,
-  FileText, Printer, QrCode, ArrowLeft
+  FileText, Printer, QrCode, ArrowLeft, Upload, Download
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import * as XLSX from "xlsx";
 
 const STAFF_LIST = [
   "ศรีไพร", "จุฬารัตน์", "วิภาวรรณ", "ณัฏฐริกา", "ณัฐพร",
@@ -460,6 +461,11 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   const [showQRPrintView, setShowQRPrintView] = useState(false);
   const [qrPrintData, setQrPrintData] = useState<any[]>([]);
 
+  // States สำหรับการ Import Excel
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importData, setImportData] = useState<any[]>([]);
+  const [isImporting, setIsImporting] = useState(false);
+
   const fetchMedicines = async () => {
     try {
       const { data, error } = await supabase
@@ -576,21 +582,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
       setIsMedModalOpen(false);
       fetchMedicines();
     } catch (error: any) { alert("บันทึกไม่สำเร็จ: " + error.message); }
-  };
-
-  const openAddMedModal = () => {
-    setIsEditing(false);
-    setMedFormData({ id: "", name: "", barcode: "", hosxp_icode: "", cabinet_category: "1", min_stock: "" });
-    setIsMedModalOpen(true);
-  };
-
-  const openEditMedModal = (med: any) => {
-    setIsEditing(true);
-    setMedFormData({
-      id: med.id, name: med.name, barcode: med.barcode || "", hosxp_icode: med.hosxp_icode || "",
-      cabinet_category: med.cabinet_category || "1", min_stock: med.min_stock?.toString() || "0"
-    });
-    setIsMedModalOpen(true);
   };
 
   const handleDeleteMed = async (id: string) => {
@@ -839,21 +830,129 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   // ----------------------------------------------------
   const handleGenerateQRPrint = () => {
     let medsToPrint = medicines;
-    
-    // กรองตามตู้ยาก่อน ถ้ามีการเลือก
     if (qrTargetCategory !== "all") {
       medsToPrint = medsToPrint.filter(m => String(m.cabinet_category) === String(qrTargetCategory));
     }
-    
-    // กรองตามรายชื่อยา
     if (qrTargetId !== "all") {
       medsToPrint = medsToPrint.filter(m => m.id.toString() === qrTargetId);
     }
-
     setQrPrintData(medsToPrint);
     setShowQRPrintView(true);
     setIsQRModalOpen(false);
   };
+
+  // ----------------------------------------------------
+  // ฟังก์ชันสำหรับ นำเข้าข้อมูลยาจาก Excel
+  // ----------------------------------------------------
+  const handleDownloadTemplate = () => {
+    const ws = XLSX.utils.json_to_sheet([
+      {
+        "ชื่อยา": "Paracetamol 500mg",
+        "ตู้ยา": "1",
+        "รหัส HosXP": "1001",
+        "บาร์โค้ด": "885123456789",
+        "EXP(YYYY-MM-DD)": "2026-12-31",
+        "จำนวน(ชิ้นย่อย)": 1000,
+        "ขนาดบรรจุ": 100,
+        "หน่วยนับ": "'s"
+      }
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Template");
+    XLSX.writeFile(wb, "medicine_import_template.xlsx");
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const data = await file.arrayBuffer();
+    const workbook = XLSX.read(data);
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false }); // raw: false แปลงวันที่เป็น text
+
+    const parsed = jsonData.map((row: any, index) => ({
+       id: index,
+       name: row["ชื่อยา"]?.toString().trim() || "",
+       cabinet_category: row["ตู้ยา"]?.toString().trim() || "",
+       hosxp_icode: row["รหัส HosXP"]?.toString().trim() || "",
+       barcode: row["บาร์โค้ด"]?.toString().trim() || "",
+       exp: row["EXP(YYYY-MM-DD)"]?.toString().trim() || "",
+       amount: parseInt(row["จำนวน(ชิ้นย่อย)"]) || 0,
+       pack_size: parseInt(row["ขนาดบรรจุ"]) || 100,
+       unit: row["หน่วยนับ"]?.toString().trim() || "'s",
+       isValid: !!(row["ชื่อยา"]?.toString().trim() && row["ตู้ยา"]?.toString().trim())
+    }));
+    setImportData(parsed);
+    e.target.value = ''; // reset input
+  };
+
+  const executeImport = async () => {
+    const validData = importData.filter(d => d.isValid);
+    if (validData.length === 0) return alert("ไม่มีข้อมูลที่ถูกต้องให้บันทึก");
+    
+    setIsImporting(true);
+    try {
+      // 1. เพิ่มชื่อยา (Master Data)
+      const medsPayload = validData.map(d => ({
+        name: d.name,
+        cabinet_category: d.cabinet_category,
+        hosxp_icode: d.hosxp_icode || null,
+        barcode: d.barcode || null,
+        min_stock: 0
+      }));
+      
+      const { data: insertedMeds, error: medErr } = await supabase.from('medicines').insert(medsPayload).select();
+      if (medErr) throw medErr;
+
+      // 2. กรองเฉพาะรายการที่มี จำนวน > 0 และระบุ EXP เพื่อสร้างล็อตและสต็อกรับเข้า
+      const lotsToInsert: any[] = [];
+      validData.forEach((d, i) => {
+        if (d.exp && d.amount > 0) {
+           const medId = insertedMeds[i].id;
+           lotsToInsert.push({
+             _originalIndex: i,
+             medicine_id: medId,
+             exp_date: d.exp,
+             pack_size: d.pack_size,
+             unit_name: d.unit,
+             current_stock: d.amount
+           });
+        }
+      });
+
+      if (lotsToInsert.length > 0) {
+        // เพิ่ม Lot
+        const { data: insertedLots, error: lotErr } = await supabase.from('medicine_lots').insert(
+          lotsToInsert.map(({_originalIndex, ...rest}) => rest)
+        ).select();
+        if (lotErr) throw lotErr;
+
+        // 3. เพิ่ม Transaction (รับเข้า)
+        const txPayload = insertedLots.map((lot: any) => {
+          return {
+            medicine_id: lot.medicine_id,
+            lot_id: lot.id,
+            exp_date: lot.exp_date,
+            action: 'in',
+            amount: lot.current_stock,
+            staff_name: session?.name || "System Import"
+          }
+        });
+        const { error: txErr } = await supabase.from('stock_transactions').insert(txPayload);
+        if (txErr) throw txErr;
+      }
+
+      alert(`นำเข้าสำเร็จ ${validData.length} รายการ`);
+      setIsImportModalOpen(false);
+      setImportData([]);
+      fetchMedicines();
+    } catch (e: any) {
+      alert("เกิดข้อผิดพลาดในการนำเข้า: " + e.message);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
 
   // ----------------------------------------------------
   // มุมมองสำหรับหน้า Print (ซ่อนส่วนอื่นๆ ทั้งหมด)
@@ -922,15 +1021,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
             ))}
           </div>
         </div>
-
-        <style dangerouslySetInnerHTML={{__html: `
-          @media print {
-            body { background: white; margin: 0; padding: 0; }
-            .print\\:hidden { display: none !important; }
-            table { page-break-inside: auto; }
-            tr { page-break-inside: avoid; page-break-after: auto; }
-          }
-        `}} />
       </div>
     );
   }
@@ -966,14 +1056,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
             ))}
           </div>
         </div>
-
-        <style dangerouslySetInnerHTML={{__html: `
-          @media print {
-            body { background: white; margin: 0; padding: 0; }
-            .print\\:hidden { display: none !important; }
-            .break-inside-avoid { page-break-inside: avoid; }
-          }
-        `}} />
       </div>
     );
   }
@@ -1008,6 +1090,9 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
             </button>
             <button onClick={() => setIsReportModalOpen(true)} className="flex-1 md:flex-none flex justify-center items-center gap-1 md:gap-2 bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 px-2 md:px-3 py-2.5 md:py-2 rounded-lg font-medium transition-colors text-xs md:text-sm">
               <FileText size={16} /> พิมพ์รายงาน
+            </button>
+            <button onClick={() => setIsImportModalOpen(true)} className="flex-1 md:flex-none flex justify-center items-center gap-1 md:gap-2 bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 px-2 md:px-3 py-2.5 md:py-2 rounded-lg font-medium transition-colors text-xs md:text-sm shadow-sm">
+              <Upload size={16} /> นำเข้า Excel
             </button>
             <button onClick={openAddMedModal} className="flex-1 md:flex-none flex justify-center items-center gap-1 md:gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2.5 md:px-4 md:py-2 rounded-lg font-medium transition-colors text-xs md:text-sm shadow-sm">
               <Plus size={16} /> เพิ่มยา
@@ -1137,7 +1222,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                         >
                           {med.name}
                         </div>
-                        {/* ซ่อนบาร์โค้ดถ้าว่าง และไม่แสดง - แล้ว */}
                         <div className="text-[11px] md:text-xs text-gray-500 mb-1 leading-snug">
                           {med.barcode && <span>บาร์โค้ด: {med.barcode} <br/></span>}
                           รหัส HosXP: <span className="font-semibold text-gray-700">{med.hosxp_icode || "-"}</span>
@@ -1222,7 +1306,80 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
           </div>
         </div>
 
-        {/* Modal เพิ่ม/แก้ไข ยา */}
+        {/* Modal นำเข้า Excel */}
+        {isImportModalOpen && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+              <div className="flex justify-between items-center p-5 md:p-6 border-b bg-amber-50">
+                <h2 className="text-lg md:text-xl font-bold flex items-center gap-2 text-amber-800">
+                  <Upload size={22} /> นำเข้าข้อมูลยาด้วยไฟล์ Excel
+                </h2>
+                <button onClick={() => { setIsImportModalOpen(false); setImportData([]); }} className="p-1 hover:bg-amber-100 rounded-md transition-colors"><X size={22} className="text-gray-500" /></button>
+              </div>
+              <div className="p-5 md:p-6 flex-1 overflow-y-auto space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                  <div>
+                    <label className="block text-sm font-medium mb-1.5 text-gray-700">อัปโหลดไฟล์ (.xlsx, .csv)</label>
+                    <input type="file" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100" />
+                  </div>
+                  <button onClick={handleDownloadTemplate} className="flex items-center gap-2 text-sm font-medium text-blue-600 bg-blue-50 px-4 py-2 rounded-lg border border-blue-200 hover:bg-blue-100">
+                    <Download size={16} /> โหลดไฟล์แม่แบบ
+                  </button>
+                </div>
+
+                <div className="bg-white border rounded-xl overflow-hidden">
+                  <div className="bg-gray-100 p-2 text-xs text-gray-600 text-center font-medium">* ชื่อยา และตู้ยา จำเป็นต้องมีข้อมูล / ส่วนอื่นๆ หากไม่ใส่ข้อมูล ระบบจะบันทึกเฉพาะชื่อยาไว้ให้</div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm border-collapse">
+                      <thead>
+                        <tr className="bg-gray-50 border-b">
+                          <th className="p-2 border-r font-medium">ชื่อยา*</th>
+                          <th className="p-2 border-r font-medium text-center">ตู้ยา*</th>
+                          <th className="p-2 border-r font-medium text-center">รหัส/บาร์โค้ด</th>
+                          <th className="p-2 border-r font-medium text-center">EXP</th>
+                          <th className="p-2 font-medium text-right">จำนวน</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importData.length === 0 ? (
+                          <tr><td colSpan={5} className="p-6 text-center text-gray-400 italic">กรุณาเลือกไฟล์เพื่อดูตัวอย่างข้อมูล</td></tr>
+                        ) : (
+                          importData.map((row) => (
+                            <tr key={row.id} className={`border-b ${!row.isValid ? 'bg-red-50' : 'hover:bg-gray-50'}`}>
+                              <td className="p-2 border-r">
+                                <span className={!row.name ? 'text-red-500 font-bold' : ''}>{row.name || 'ไม่ได้ระบุ'}</span>
+                              </td>
+                              <td className="p-2 border-r text-center">
+                                <span className={!row.cabinet_category ? 'text-red-500 font-bold' : ''}>{row.cabinet_category || '-'}</span>
+                              </td>
+                              <td className="p-2 border-r text-xs text-center text-gray-500">
+                                {row.hosxp_icode} {row.barcode ? `(${row.barcode})` : ''}
+                              </td>
+                              <td className="p-2 border-r text-center text-rose-600">{row.exp || '-'}</td>
+                              <td className="p-2 text-right">
+                                {row.amount > 0 ? (
+                                  <span className="font-semibold text-emerald-700">{row.amount} <span className="text-xs text-gray-500">{row.unit}</span></span>
+                                ) : '-'}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 border-t bg-gray-50 flex gap-3">
+                <button type="button" onClick={() => { setIsImportModalOpen(false); setImportData([]); }} className="flex-1 border border-gray-300 p-3 rounded-xl font-medium text-gray-700 hover:bg-gray-100 transition-colors">ยกเลิก</button>
+                <button type="button" onClick={executeImport} disabled={importData.length === 0 || isImporting} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white p-3 rounded-xl font-medium transition-colors disabled:opacity-50">
+                  {isImporting ? 'กำลังนำเข้าข้อมูล...' : 'ยืนยันนำเข้าข้อมูล'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal เพิ่ม/แก้ไข ยา (แบบ Manual เดิม) */}
         {isMedModalOpen && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
@@ -1307,7 +1464,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                     value={qrTargetCategory}
                     onChange={(e) => {
                       setQrTargetCategory(e.target.value === "all" ? "all" : Number(e.target.value));
-                      setQrTargetId("all"); // รีเซ็ตชื่อยาเมื่อเปลี่ยนตู้
+                      setQrTargetId("all");
                     }}
                   >
                     <option value="all">-- ทุกตู้ยา --</option>
@@ -1360,7 +1517,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
 
                 {stockAction === 'in' ? (
                   <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-100 space-y-3">
-                    {/* Toggle เลือกประเภทล็อค */}
                     <div className="flex gap-2 bg-white p-1 rounded-lg border border-emerald-200">
                       <button type="button" onClick={() => setStockInMode('existing')} className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${stockInMode === 'existing' ? 'bg-emerald-100 text-emerald-800 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>เลือกล็อตเดิม</button>
                       <button type="button" onClick={() => setStockInMode('new')} className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${stockInMode === 'new' ? 'bg-emerald-100 text-emerald-800 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>+ เพิ่มล็อตใหม่</button>
@@ -1375,11 +1531,17 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                           if(l) { setStockPackSize(l.pack_size.toString()); setStockUnitName(l.unit_name); }
                         }}>
                           <option value="">-- กรุณาเลือกล็อต --</option>
-                          {(selectedMed.medicine_lots || []).map((lot: any) => (
-                            <option key={lot.id} value={lot.id}>
-                              EXP: {lot.exp_date} (บรรจุ {lot.pack_size} {lot.unit_name})
-                            </option>
-                          ))}
+                          {(selectedMed.medicine_lots || []).map((lot: any) => {
+                            const packs = Math.floor(lot.current_stock / lot.pack_size);
+                            const remainder = lot.current_stock % lot.pack_size;
+                            const unitString = lot.unit_name === "'s" ? "'" : ` ${lot.unit_name}`;
+                            const remainderText = remainder > 0 ? ` เศษ ${remainder}` : "";
+                            return (
+                              <option key={lot.id} value={lot.id}>
+                                EXP: {lot.exp_date} (เหลือ: {packs}x{lot.pack_size}{unitString}{remainderText})
+                              </option>
+                            )
+                          })}
                         </select>
                       </div>
                     ) : (
@@ -1408,11 +1570,17 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                     <label className="block text-sm font-medium text-red-800 mb-1">เลือกล็อต EXP ที่ต้องการหักสต็อก *</label>
                     <select required className="w-full border border-red-200 rounded-lg p-3 bg-white font-medium outline-none focus:ring-2 focus:ring-red-500" value={selectedLotId} onChange={(e) => setSelectedLotId(e.target.value)}>
                       <option value="">-- กรุณาเลือกล็อต --</option>
-                      {(selectedMed.medicine_lots || []).filter((l: any) => l.current_stock > 0).map((lot: any) => (
-                        <option key={lot.id} value={lot.id}>
-                          EXP: {lot.exp_date} (เหลือ: {lot.current_stock} {lot.unit_name} | บรรจุ {lot.pack_size})
-                        </option>
-                      ))}
+                      {(selectedMed.medicine_lots || []).filter((l: any) => l.current_stock > 0).map((lot: any) => {
+                        const packs = Math.floor(lot.current_stock / lot.pack_size);
+                        const remainder = lot.current_stock % lot.pack_size;
+                        const unitString = lot.unit_name === "'s" ? "'" : ` ${lot.unit_name}`;
+                        const remainderText = remainder > 0 ? ` เศษ ${remainder}` : "";
+                        return (
+                          <option key={lot.id} value={lot.id}>
+                            EXP: {lot.exp_date} (เหลือ: {packs}x{lot.pack_size}{unitString}{remainderText})
+                          </option>
+                        )
+                      })}
                     </select>
                   </div>
                 )}
