@@ -584,6 +584,23 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     } catch (error: any) { alert("บันทึกไม่สำเร็จ: " + error.message); }
   };
 
+  // ----- เพิ่มฟังก์ชันที่หายไป 2 ตัวนี้กลับมา -----
+  const openAddMedModal = () => {
+    setIsEditing(false);
+    setMedFormData({ id: "", name: "", barcode: "", hosxp_icode: "", cabinet_category: "1", min_stock: "" });
+    setIsMedModalOpen(true);
+  };
+
+  const openEditMedModal = (med: any) => {
+    setIsEditing(true);
+    setMedFormData({
+      id: med.id, name: med.name, barcode: med.barcode || "", hosxp_icode: med.hosxp_icode || "",
+      cabinet_category: med.cabinet_category || "1", min_stock: med.min_stock?.toString() || "0"
+    });
+    setIsMedModalOpen(true);
+  };
+  // ------------------------------------------
+
   const handleDeleteMed = async (id: string) => {
     if (!confirm("คุณแน่ใจหรือไม่ที่จะลบยานี้? (ข้อมูลสต็อกของยานี้จะหายไปทั้งหมด)")) return;
     try {
@@ -868,7 +885,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     const data = await file.arrayBuffer();
     const workbook = XLSX.read(data);
     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-    const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false }); // raw: false แปลงวันที่เป็น text
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false });
 
     const parsed = jsonData.map((row: any, index) => ({
        id: index,
@@ -883,7 +900,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
        isValid: !!(row["ชื่อยา"]?.toString().trim() && row["ตู้ยา"]?.toString().trim())
     }));
     setImportData(parsed);
-    e.target.value = ''; // reset input
+    e.target.value = ''; 
   };
 
   const executeImport = async () => {
@@ -892,7 +909,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     
     setIsImporting(true);
     try {
-      // 1. เพิ่มชื่อยา (Master Data)
       const medsPayload = validData.map(d => ({
         name: d.name,
         cabinet_category: d.cabinet_category,
@@ -904,7 +920,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
       const { data: insertedMeds, error: medErr } = await supabase.from('medicines').insert(medsPayload).select();
       if (medErr) throw medErr;
 
-      // 2. กรองเฉพาะรายการที่มี จำนวน > 0 และระบุ EXP เพื่อสร้างล็อตและสต็อกรับเข้า
       const lotsToInsert: any[] = [];
       validData.forEach((d, i) => {
         if (d.exp && d.amount > 0) {
@@ -921,13 +936,11 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
       });
 
       if (lotsToInsert.length > 0) {
-        // เพิ่ม Lot
         const { data: insertedLots, error: lotErr } = await supabase.from('medicine_lots').insert(
           lotsToInsert.map(({_originalIndex, ...rest}) => rest)
         ).select();
         if (lotErr) throw lotErr;
 
-        // 3. เพิ่ม Transaction (รับเข้า)
         const txPayload = insertedLots.map((lot: any) => {
           return {
             medicine_id: lot.medicine_id,
@@ -1379,7 +1392,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
           </div>
         )}
 
-        {/* Modal เพิ่ม/แก้ไข ยา (แบบ Manual เดิม) */}
+        {/* Modal เพิ่ม/แก้ไข ยา (แบบ Manual) */}
         {isMedModalOpen && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
