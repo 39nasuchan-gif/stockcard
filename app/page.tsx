@@ -285,7 +285,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
 
   const [isMedModalOpen, setIsMedModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [medFormData, setMedFormData] = useState({ id: "", name: "", barcode: "", hosxp_icode: "", cabinet_category: "1", min_stock: "", notes: "" });
+  const [medFormData, setMedFormData] = useState({ id: "", name: "", barcode: "", hosxp_icode: "", cabinet_category: "1", min_stock: "" });
 
   const [isStockModalOpen, setIsStockModalOpen] = useState(false);
   const [selectedMed, setSelectedMed] = useState<any>(null);
@@ -298,19 +298,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   const [inputMode, setInputMode] = useState<'base' | 'pack'>('base');
   const [inputAmount, setInputAmount] = useState("");
   const [inputPackCount, setInputPackCount] = useState("");
-
-  // ข้อ 8: รับเข้าสต็อกล่วงหน้า
-  const [stockIsAdvance, setStockIsAdvance] = useState(false);
-  const [stockReceiveDate, setStockReceiveDate] = useState("");
-  const [pendingIntakes, setPendingIntakes] = useState<any[]>([]);
-
-  // ข้อ 7: แก้ไขรายการรับเข้า/ตัดจ่าย พร้อมประวัติผู้แก้ไข
-  const [isEditTxModalOpen, setIsEditTxModalOpen] = useState(false);
-  const [editingTx, setEditingTx] = useState<any>(null);
-  const [editTxAmount, setEditTxAmount] = useState("");
-  const [editTxExpDate, setEditTxExpDate] = useState("");
-  const [editTxReason, setEditTxReason] = useState("");
-  const [editTxBusy, setEditTxBusy] = useState(false);
 
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   
@@ -369,7 +356,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     } catch (error) { console.error("Error fetching categories:", error); }
   };
 
-  useEffect(() => { fetchMedicines(); fetchCategories(); checkAndPostDuePendingIntakes(); }, []);
+  useEffect(() => { fetchMedicines(); fetchCategories(); }, []);
 
   useEffect(() => {
     if (isHistoryModalOpen && historyMed) {
@@ -442,7 +429,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
         hosxp_icode: medFormData.hosxp_icode,
         cabinet_category: medFormData.cabinet_category,
         min_stock: parseInt(medFormData.min_stock) || 0,
-        notes: medFormData.notes === "" ? null : medFormData.notes,
       };
       if (isEditing) {
         const { error } = await supabase.from("medicines").update(payload).eq("id", medFormData.id);
@@ -457,7 +443,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
 
   const openAddMedModal = () => {
     setIsEditing(false);
-    setMedFormData({ id: "", name: "", barcode: "", hosxp_icode: "", cabinet_category: categoriesList.length > 0 ? String(categoriesList[0].id) : "1", min_stock: "", notes: "" });
+    setMedFormData({ id: "", name: "", barcode: "", hosxp_icode: "", cabinet_category: categoriesList.length > 0 ? String(categoriesList[0].id) : "1", min_stock: "" });
     setIsMedModalOpen(true);
   };
 
@@ -465,8 +451,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     setIsEditing(true);
     setMedFormData({
       id: med.id, name: med.name, barcode: med.barcode || "", hosxp_icode: med.hosxp_icode || "",
-      cabinet_category: med.cabinet_category || (categoriesList.length > 0 ? String(categoriesList[0].id) : "1"), min_stock: med.min_stock?.toString() || "0",
-      notes: med.notes || ""
+      cabinet_category: med.cabinet_category || (categoriesList.length > 0 ? String(categoriesList[0].id) : "1"), min_stock: med.min_stock?.toString() || "0"
     });
     setIsMedModalOpen(true);
   };
@@ -505,31 +490,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     }
 
     try {
-      // ข้อ 8: รับเข้าสต็อกล่วงหน้า - บันทึกไว้เป็น "รอรับเข้า" ยังไม่บวกเข้าสต็อกจริงจนถึงวันที่กำหนด
-      if (stockAction === 'in' && stockIsAdvance) {
-        if (!stockReceiveDate) return alert("กรุณาระบุวันที่ต้องการให้รับเข้าสต็อก");
-        const today = new Date().toISOString().split('T')[0];
-        if (stockReceiveDate <= today) return alert("วันที่รับเข้าล่วงหน้าต้องเป็นวันที่ในอนาคต");
-        const expForPending = stockInMode === 'existing'
-          ? (selectedMed.medicine_lots || []).find((l: any) => l.id.toString() === selectedLotId)?.exp_date
-          : stockExpDate;
-        const packSizeForPending = stockInMode === 'existing'
-          ? (selectedMed.medicine_lots || []).find((l: any) => l.id.toString() === selectedLotId)?.pack_size
-          : parseInt(stockPackSize);
-        const unitForPending = stockInMode === 'existing'
-          ? (selectedMed.medicine_lots || []).find((l: any) => l.id.toString() === selectedLotId)?.unit_name
-          : stockUnitName;
-        if (!expForPending) return alert("กรุณาระบุวันหมดอายุ (EXP)");
-        const { error } = await supabase.from("pending_stock_intakes").insert([{
-          medicine_id: selectedMed.id, exp_date: expForPending, pack_size: packSizeForPending, unit_name: unitForPending,
-          total_amount: totalItems, receive_date: stockReceiveDate, created_by: session.name, posted: false,
-        }]);
-        if (error) throw error;
-        setIsStockModalOpen(false);
-        if (isHistoryModalOpen) openHistoryModal(selectedMed);
-        return;
-      }
-
       if (stockAction === 'in') {
         if (stockInMode === 'existing') {
           if (!selectedLotId) return alert("กรุณาเลือกล็อตที่มีอยู่");
@@ -567,7 +527,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
 
   const openStockModal = (med: any, action: 'in' | 'out') => {
     setSelectedMed(med); setStockAction(action); setInputMode('base'); setInputAmount(""); setInputPackCount(""); setStockExpDate(""); setSelectedLotId("");
-    setStockIsAdvance(false); setStockReceiveDate("");
     if (action === 'in') {
       if (med.medicine_lots && med.medicine_lots.length > 0) {
         setStockInMode('existing'); const firstLot = med.medicine_lots[0];
@@ -587,122 +546,12 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     try {
       const { data, error } = await supabase.from("stock_transactions").select("*").eq("medicine_id", String(med.id)).order("created_at", { ascending: false });
       if (error) throw error;
-
-      const { data: pendingData } = await supabase.from("pending_stock_intakes").select("*").eq("medicine_id", String(med.id)).eq("posted", false).order("receive_date", { ascending: true });
-      const pendingRows = (pendingData || []).map((p: any) => ({
-        id: `pending-${p.id}`,
-        action: 'in',
-        amount: p.total_amount,
-        exp_date: p.exp_date,
-        staff_name: p.created_by,
-        created_at: p.created_at,
-        lot_id: null,
-        is_pending: true,
-        receive_date: p.receive_date,
-      }));
-
-      setHistoryRows([...pendingRows, ...(data || [])]);
+      setHistoryRows(data || []);
     } catch (error) { setHistoryRows([]); } finally { setHistoryLoading(false); }
   };
 
   const formatHistoryDate = (iso: string) => {
     try { return new Date(iso).toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return iso; }
-  };
-
-  // ข้อ 8: ตรวจสอบและรับเข้าสต็อกล่วงหน้าที่ถึงกำหนดวันรับแล้วโดยอัตโนมัติ
-  const checkAndPostDuePendingIntakes = async () => {
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      const { data: due, error } = await supabase.from("pending_stock_intakes").select("*").eq("posted", false).lte("receive_date", today);
-      if (error || !due || due.length === 0) return;
-
-      for (const intake of due) {
-        const { data: lots } = await supabase.from("medicine_lots").select("*").eq("medicine_id", intake.medicine_id).eq("exp_date", intake.exp_date).eq("pack_size", intake.pack_size).eq("unit_name", intake.unit_name);
-        let lotId: string; let expDate = intake.exp_date;
-        if (lots && lots.length > 0) {
-          const lot = lots[0];
-          await supabase.from("medicine_lots").update({ current_stock: lot.current_stock + intake.total_amount }).eq("id", lot.id);
-          lotId = lot.id;
-        } else {
-          const { data: newLot } = await supabase.from("medicine_lots").insert([{ medicine_id: intake.medicine_id, exp_date: intake.exp_date, pack_size: intake.pack_size, unit_name: intake.unit_name, current_stock: intake.total_amount }]).select().single();
-          lotId = newLot.id;
-        }
-        await supabase.from("stock_transactions").insert([{
-          medicine_id: String(intake.medicine_id), lot_id: String(lotId), exp_date: expDate, action: 'in', amount: intake.total_amount,
-          staff_name: `${intake.created_by} (รับเข้าล่วงหน้าอัตโนมัติ)`,
-        }]);
-        await supabase.from("pending_stock_intakes").update({ posted: true, posted_at: new Date().toISOString() }).eq("id", intake.id);
-      }
-      fetchMedicines();
-    } catch (e) { console.error("checkAndPostDuePendingIntakes error:", e); }
-  };
-
-  // ข้อ 7: เปิดหน้าต่างแก้ไขรายการรับเข้า/ตัดจ่าย
-  const openEditTxModal = (row: any, lotInfo: any) => {
-    setEditingTx(row);
-    setEditTxAmount(String(row.amount));
-    setEditTxExpDate(row.exp_date || (lotInfo?.exp_date || ""));
-    setEditTxReason("");
-    setIsEditTxModalOpen(true);
-  };
-
-  const handleSaveEditTx = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingTx || !historyMed) return;
-    const newAmount = parseInt(editTxAmount);
-    if (!newAmount || newAmount <= 0) return alert("กรุณาระบุจำนวนให้ถูกต้อง");
-    if (!editTxExpDate) return alert("กรุณาระบุวันหมดอายุ (EXP)");
-    if (!editTxReason.trim()) return alert("กรุณาระบุเหตุผลในการแก้ไข (เช่น รับผิด EXP, ผิดหน่วย, ผิดจำนวน)");
-    setEditTxBusy(true);
-    try {
-      const oldAmount = editingTx.amount;
-      const oldExp = editingTx.exp_date;
-      const sign = editingTx.action === 'in' ? 1 : -1; // in เพิ่มสต็อก, out ลดสต็อก
-      const oldLot = (historyMed.medicine_lots || []).find((l: any) => String(l.id) === String(editingTx.lot_id));
-      if (!oldLot) throw new Error("ไม่พบล็อตเดิมของรายการนี้");
-
-      if (editTxExpDate === oldExp) {
-        // แก้ไขเฉพาะจำนวน ในล็อตเดิม
-        const delta = (newAmount - oldAmount) * sign;
-        const updatedStock = oldLot.current_stock + delta;
-        if (updatedStock < 0) throw new Error("จำนวนที่แก้ไขทำให้สต็อกติดลบ กรุณาตรวจสอบอีกครั้ง");
-        const { error } = await supabase.from("medicine_lots").update({ current_stock: updatedStock }).eq("id", oldLot.id);
-        if (error) throw error;
-      } else {
-        // ย้อนสต็อกล็อตเดิมกลับ แล้วนำเข้า/หักออกจากล็อตใหม่ตาม EXP ที่แก้ไข
-        const revertedOldStock = oldLot.current_stock - (oldAmount * sign);
-        if (revertedOldStock < 0) throw new Error("ไม่สามารถแก้ไข EXP ได้ เนื่องจากสต็อกล็อตเดิมจะติดลบ");
-        const { error: revertErr } = await supabase.from("medicine_lots").update({ current_stock: revertedOldStock }).eq("id", oldLot.id);
-        if (revertErr) throw revertErr;
-
-        const { data: targetLots } = await supabase.from("medicine_lots").select("*").eq("medicine_id", historyMed.id).eq("exp_date", editTxExpDate).eq("pack_size", oldLot.pack_size).eq("unit_name", oldLot.unit_name);
-        if (targetLots && targetLots.length > 0) {
-          const newStockVal = targetLots[0].current_stock + (newAmount * sign);
-          if (newStockVal < 0) throw new Error("จำนวนที่แก้ไขทำให้สต็อกในล็อตใหม่ติดลบ");
-          const { error } = await supabase.from("medicine_lots").update({ current_stock: newStockVal }).eq("id", targetLots[0].id);
-          if (error) throw error;
-          editingTx.lot_id = targetLots[0].id;
-        } else {
-          const initStock = newAmount * sign;
-          if (initStock < 0) throw new Error("ไม่สามารถสร้างล็อตใหม่ด้วยสต็อกติดลบได้");
-          const { data: newLot, error } = await supabase.from("medicine_lots").insert([{ medicine_id: historyMed.id, exp_date: editTxExpDate, pack_size: oldLot.pack_size, unit_name: oldLot.unit_name, current_stock: initStock }]).select().single();
-          if (error) throw error;
-          editingTx.lot_id = newLot.id;
-        }
-      }
-
-      const { error: txErr } = await supabase.from("stock_transactions").update({
-        amount: newAmount, exp_date: editTxExpDate, lot_id: String(editingTx.lot_id),
-        edited_by: session.name, edited_at: new Date().toISOString(), edit_reason: editTxReason.trim(),
-      }).eq("id", editingTx.id);
-      if (txErr) throw txErr;
-
-      setIsEditTxModalOpen(false); setEditingTx(null);
-      await fetchMedicines();
-      await openHistoryModal({ ...historyMed, id: historyMed.id });
-    } catch (error: any) {
-      alert("แก้ไขรายการไม่สำเร็จ: " + error.message);
-    } finally { setEditTxBusy(false); }
   };
 
   const calculateMedStats = (med: any) => {
@@ -1314,23 +1163,19 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                     <label className="block text-sm font-medium mb-1.5 text-gray-700">ชื่อยา *</label>
                     <input type="text" required className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.name} onChange={(e) => setMedFormData({ ...medFormData, name: e.target.value })} />
                   </div>
-                  <div><label className="block text-sm font-medium mb-1.5 text-gray-700">รหัส HosXP</label><input type="text" className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.hosxp_icode} onChange={(e) => setMedFormData({ ...medFormData, hosxp_icode: e.target.value })} /></div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1.5 text-gray-700">บาร์โค้ด</label>
+                    <input type="text" className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.barcode} onChange={(e) => setMedFormData({ ...medFormData, barcode: e.target.value })} />
+                  </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div><label className="block text-sm font-medium mb-1.5 text-gray-700">รหัส HosXP</label><input type="text" className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.hosxp_icode} onChange={(e) => setMedFormData({ ...medFormData, hosxp_icode: e.target.value })} /></div>
                   <div>
                     <label className="block text-sm font-medium mb-1.5 text-gray-700">หมวดหมู่ตู้ยา</label>
                     <select className="w-full border border-gray-300 rounded-lg p-2.5 bg-white outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.cabinet_category} onChange={(e) => setMedFormData({ ...medFormData, cabinet_category: e.target.value })}>
                       {categoriesList.map(cat => <option key={cat.id} value={cat.id.toString()}>{cat.name}</option>)}
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1.5 text-gray-700">สต็อกขั้นต่ำ (แจ้งเตือน)</label>
-                    <input type="number" min="0" className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.min_stock} onChange={(e) => setMedFormData({ ...medFormData, min_stock: e.target.value })} />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1.5 text-gray-700">หมายเหตุ</label>
-                  <textarea rows={3} placeholder="เช่น ตำแหน่งจัดเก็บ, ข้อควรระวัง, ชื่อการค้าอื่นๆ" className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 resize-none" value={medFormData.notes} onChange={(e) => setMedFormData({ ...medFormData, notes: e.target.value })} />
                 </div>
                 <div className="pt-4 flex gap-3">
                   <button type="button" onClick={() => setIsMedModalOpen(false)} className="flex-1 border border-gray-300 p-3 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors">ยกเลิก</button>
@@ -1412,18 +1257,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                 <div className="font-bold text-gray-800 mb-2 border-b pb-2">{selectedMed.name}</div>
                 {stockAction === 'in' ? (
                   <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-100 space-y-3">
-                    {/* ข้อ 8: ตัวเลือกรับเข้าสต็อกล่วงหน้า */}
-                    <label className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-lg p-2.5 cursor-pointer">
-                      <input type="checkbox" className="w-4 h-4 accent-indigo-600" checked={stockIsAdvance} onChange={(e) => setStockIsAdvance(e.target.checked)} />
-                      <span className="text-sm font-medium text-indigo-800">รับเข้าล่วงหน้า (กำหนดวันที่จะให้เข้าสต็อกจริง)</span>
-                    </label>
-                    {stockIsAdvance && (
-                      <div>
-                        <label className="block text-sm font-medium text-indigo-800 mb-1">วันที่จะให้เข้าสต็อก *</label>
-                        <input type="date" required className="w-full border border-indigo-200 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500" value={stockReceiveDate} onChange={(e) => setStockReceiveDate(e.target.value)} />
-                        <p className="text-[11px] text-indigo-600 mt-1">ระหว่างรอถึงวันที่กำหนด ยอดนี้จะยังไม่ถูกบวกเข้าสต็อกคงเหลือ แต่จะแสดงในประวัติว่า "รอรับเข้า"</p>
-                      </div>
-                    )}
                     <div className="flex gap-2 bg-white p-1 rounded-lg border border-emerald-200">
                       <button type="button" onClick={() => setStockInMode('existing')} className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${stockInMode === 'existing' ? 'bg-emerald-100 text-emerald-800 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>เลือกล็อตเดิม</button>
                       <button type="button" onClick={() => setStockInMode('new')} className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${stockInMode === 'new' ? 'bg-emerald-100 text-emerald-800 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>+ เพิ่มล็อตใหม่</button>
@@ -1604,32 +1437,15 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                             </div>
                             <div>
                               <div className={`text-sm md:text-base font-bold ${isInc ? 'text-emerald-700' : 'text-red-700'}`}>
-                                {isInc ? 'รับเข้า' : 'ตัดจ่าย'} {fPacks} กล่อง{fRem > 0 ? ` เศษ ${fRem} ${pUnit}` : ''} <span className="text-gray-400 font-normal text-xs">(x{pSize} {pUnit})</span>
+                                {isInc ? 'รับเข้า' : 'ตัดจ่าย'} {row.amount} {pUnit}
                               </div>
-                              <div className="text-[11px] md:text-xs font-medium text-blue-600 mt-0.5">(รวมทั้งหมด {row.amount} {pUnit})</div>
+                              <div className="text-[11px] md:text-xs font-medium text-blue-600 mt-0.5">(≈ {fPacks} กล่อง {fRem > 0 ? `เศษ ${fRem}` : ''})</div>
                               <div className="text-[10px] md:text-xs text-gray-500 flex items-center gap-1 mt-1.5"><CalendarDays size={12} /> EXP: {row.exp_date || "-"}</div>
                               <div className="text-[9px] md:text-[10px] text-gray-400 mt-0.5">{formatHistoryDate(row.created_at)}</div>
-                              {row.edited_by && (
-                                <div className="text-[9px] md:text-[10px] text-amber-600 mt-1 bg-amber-50 border border-amber-100 rounded px-1.5 py-0.5 w-fit">
-                                  แก้ไขล่าสุดโดย {row.edited_by} เมื่อ {formatHistoryDate(row.edited_at)}{row.edit_reason ? ` — เหตุผล: ${row.edit_reason}` : ''}
-                                </div>
-                              )}
-                              {row.is_pending && (
-                                <div className="text-[9px] md:text-[10px] text-indigo-700 mt-1 bg-indigo-50 border border-indigo-100 rounded px-1.5 py-0.5 w-fit">
-                                  รอรับเข้า — จะเข้าสต็อกจริงวันที่ {row.receive_date}
-                                </div>
-                              )}
                             </div>
                           </div>
-                          <div className="flex flex-col items-end gap-1.5 shrink-0">
-                            <div className="flex items-center gap-1 text-[9px] md:text-[10px] font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-md">
-                              <User size={10} /> {row.staff_name}
-                            </div>
-                            {!row.is_pending && (
-                              <button onClick={() => openEditTxModal(row, lotInfo)} className="flex items-center gap-1 text-[9px] md:text-[10px] font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-100 px-2 py-1 rounded-md transition-colors">
-                                <Edit size={10} /> แก้ไขรายการ
-                              </button>
-                            )}
+                          <div className="flex items-center gap-1 text-[9px] md:text-[10px] font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-md shrink-0">
+                            <User size={10} /> {row.staff_name}
                           </div>
                         </div>
                       )
