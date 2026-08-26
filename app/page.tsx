@@ -325,6 +325,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   const [globalEndDate, setGlobalEndDate] = useState("");
 
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [reportTargetCategory, setReportTargetCategory] = useState<number | "all">("all");
   const [reportTargetId, setReportTargetId] = useState("all");
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [showPrintView, setShowPrintView] = useState(false);
@@ -652,7 +653,8 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
       if (error) throw error;
 
       const grouped: any = {};
-      const medsToProcess = reportTargetId === "all" ? medicines : medicines.filter(m => m.id.toString() === reportTargetId);
+      let medsToProcess = reportTargetCategory === "all" ? medicines : medicines.filter(m => String(m.cabinet_category) === String(reportTargetCategory));
+      if (reportTargetId !== "all") medsToProcess = medsToProcess.filter(m => m.id.toString() === reportTargetId);
       
       medsToProcess.forEach(med => {
          let currentTotalStock = (med.medicine_lots || []).reduce((sum: number, lot: any) => sum + lot.current_stock, 0);
@@ -1258,10 +1260,17 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
               </div>
               <div className="p-6 space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-gray-700">เลือกรายการที่ต้องการพิมพ์</label>
+                  <label className="block text-sm font-medium mb-2 text-gray-700">เลือกตู้ยา (Cabinet)</label>
+                  <select className="w-full border border-gray-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500 bg-white" value={reportTargetCategory} onChange={(e) => { setReportTargetCategory(e.target.value === "all" ? "all" : Number(e.target.value)); setReportTargetId("all"); }}>
+                    <option value="all">-- ทุกตู้ยา --</option>
+                    {categoriesList.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-gray-700">เลือกชื่อยา</label>
                   <select className="w-full border border-gray-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500 bg-white" value={reportTargetId} onChange={(e) => setReportTargetId(e.target.value)}>
-                    <option value="all">-- พิมพ์ยาทั้งหมด --</option>
-                    {medicines.map(m => <option key={m.id} value={m.id}>{m.name} {m.hosxp_icode ? `(${m.hosxp_icode})` : ''}</option>)}
+                    <option value="all">-- พิมพ์ทั้งหมด (ตามตู้ที่เลือก) --</option>
+                    {medicines.filter(m => reportTargetCategory === "all" || String(m.cabinet_category) === String(reportTargetCategory)).map(m => <option key={m.id} value={m.id}>{m.name} {m.hosxp_icode ? `(${m.hosxp_icode})` : ''}</option>)}
                   </select>
                 </div>
                 <div className="pt-4 flex gap-3">
@@ -1496,17 +1505,20 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                       return (
                         <div key={row.id} className={`flex items-center justify-between ${isDeleted ? 'bg-gray-100 border-gray-200 py-2 px-3' : 'border border-gray-100 bg-white rounded-xl p-3 md:p-4 shadow-sm hover:bg-gray-50/50'} rounded-xl transition-colors`}>
                           <div className="flex items-start gap-3 md:gap-4">
-                            <div className={`p-2 rounded-lg ${isDeleted ? 'bg-gray-200 text-gray-400' : (isInc ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600')}`}>
-                              {isInc ? <PackagePlus size={20} /> : <PackageMinus size={20} />}
+                            <div className={`p-2 rounded-lg ${isDeleted ? 'bg-amber-100 text-amber-700' : (isInc ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600')}`}>
+                              {isDeleted ? <RotateCcw size={20} /> : (isInc ? <PackagePlus size={20} /> : <PackageMinus size={20} />)}
                             </div>
-                            <div>
-                              <div className={`text-sm md:text-base font-bold ${isDeleted ? 'text-gray-500' : (isInc ? 'text-emerald-700' : 'text-red-700')}`}>
-                                {isDeleted ? 'ลบรายการนี้แล้ว' : `${isInc ? 'รับเข้า' : 'ตัดจ่าย'} ${row.amount} ${pUnit}`}
+                            <div className="min-w-0 flex-1">
+                              <div className={`text-sm md:text-base font-bold ${isDeleted ? 'text-amber-800' : (isInc ? 'text-emerald-700' : 'text-red-700')}`}>
+                                {isDeleted ? 'ยกเลิกรายการเดิม' : `${isInc ? 'รับเข้า' : 'ตัดจ่าย'} ${row.amount} ${pUnit}`}
                               </div>
                               {!isDeleted && <div className="text-[11px] md:text-xs font-medium text-blue-600 mt-0.5">(≈ {fPacks} กล่อง {fRem > 0 ? `เศษ ${fRem}` : ''})</div>}
-                              {isDeleted && <div className="text-[10px] text-gray-500 mt-0.5">รายการนี้ถูกลบออกจากสต็อกแล้ว · ผู้ลบ: {row.voided_by || row.staff_name || '-'} · {formatHistoryDate(row.voided_at || row.created_at)}</div>}
+                              {isDeleted && <div className="mt-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[10px] md:text-xs text-amber-800">
+                                <div className="font-bold">↳ รายการนี้ถูกยกเลิก</div>
+                                <div className="mt-0.5">เหตุผล: {row.void_reason || '-'} · ผู้ยกเลิก: {row.voided_by || row.staff_name || '-'} · {formatHistoryDate(row.voided_at || row.created_at)}</div>
+                              </div>}
                               <div className="text-[10px] md:text-xs text-gray-500 flex items-center gap-1 mt-1.5"><CalendarDays size={12} /> EXP: {row.exp_date || "-"}</div>
-                              <div className="text-[9px] md:text-[10px] text-gray-400 mt-0.5">{formatHistoryDate(row.created_at)}</div>
+                              <div className="text-[9px] md:text-[10px] text-gray-400 mt-0.5">{isDeleted ? `บันทึกเดิม: ${formatHistoryDate(row.created_at)}` : formatHistoryDate(row.created_at)}</div>
                             </div>
                           </div>
                           {!isDeleted && <button onClick={() => handleVoidTransaction(row)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md" title="ลบรายการ"><Trash2 size={14}/></button>}
