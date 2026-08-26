@@ -6,8 +6,7 @@ import {
   Plus, PackagePlus, PackageMinus, X, Calculator, Edit, Trash2, CalendarDays,
   User, Users, Lock, LogOut, KeyRound, ShieldCheck, CheckCircle2, CircleDashed,
   Search, Tag, Check, LayoutGrid, History, TrendingDown, CalendarRange,
-  FileText, Printer, QrCode, ArrowLeft, Upload, Download, ArrowUpDown, Clock,
-  Ban
+  FileText, Printer, QrCode, ArrowLeft, Upload, Download, ArrowUpDown, Clock
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import * as XLSX from "xlsx";
@@ -16,10 +15,12 @@ const STAFF_LIST = ["ศรีไพร", "จุฬารัตน์", "วิ
 const CENTRAL_ACCOUNT_NAME = "บัญชีส่วนกลาง";
 const SESSION_KEY = "stockcard_session_v1";
 
+// ชุดสีสำหรับตู้ยาที่หลากหลายและสดใส มองเห็นง่าย
 const CAT_COLORS = [
-  "bg-blue-600 border-blue-600", "bg-pink-600 border-pink-600", "bg-emerald-600 border-emerald-600", 
-  "bg-amber-600 border-amber-600", "bg-purple-600 border-purple-600", "bg-rose-600 border-rose-600",
-  "bg-indigo-600 border-indigo-600", "bg-teal-600 border-teal-600", "bg-orange-600 border-orange-600"
+  "bg-blue-600 border-blue-600", "bg-emerald-600 border-emerald-600", "bg-purple-600 border-purple-600", 
+  "bg-amber-600 border-amber-600", "bg-rose-600 border-rose-600", "bg-indigo-600 border-indigo-600",
+  "bg-teal-600 border-teal-600", "bg-orange-600 border-orange-600", "bg-pink-600 border-pink-600",
+  "bg-cyan-600 border-cyan-600", "bg-violet-600 border-violet-600", "bg-lime-600 border-lime-600"
 ];
 
 type Session = { id: string; name: string; isCentral: boolean };
@@ -128,6 +129,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   const [showQRPrintView, setShowQRPrintView] = useState(false); const [qrPrintData, setQrPrintData] = useState<any[]>([]);
 
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
 
   const fetchMedicines = async () => {
     try {
@@ -182,15 +184,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
       const { error } = await supabase.from("cabinet_categories").insert([{ id: nextId, name: newName.trim() }]); 
       if (error) throw error; fetchCategories(); 
     } catch (error: any) { alert("เพิ่มตู้ยาไม่สำเร็จ: " + error.message); }
-  };
-
-  const handleRenameCategory = async (e: React.FormEvent) => {
-    e.preventDefault(); if (editingCategoryId === null) return;
-    const trimmed = categoryNameInput.trim(); if (!trimmed) return;
-    try {
-      const { error } = await supabase.from("cabinet_categories").upsert({ id: editingCategoryId, name: trimmed }, { onConflict: "id" });
-      if (error) throw error; fetchCategories(); setEditingCategoryId(null); setCategoryNameInput("");
-    } catch (error: any) { alert("บันทึกชื่อหมวดหมู่ไม่สำเร็จ: " + error.message); }
   };
 
   const getCategoryName = (id: string | number) => { const cat = categoriesList?.find(c => String(c.id) === String(id)); return cat ? cat.name : id; };
@@ -325,36 +318,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     } catch (error) { setHistoryRows([]); } finally { setHistoryLoading(false); }
   };
 
-  const handleVoidTransaction = async (tx: any) => {
-    if (tx.status === 'voided') return;
-    const reason = prompt("ระบุเหตุผลที่ต้องการยกเลิก/แก้ไขรายการนี้:");
-    if (!reason) return;
-    try {
-        if (tx.status === 'completed') {
-            const lot = (historyMed.medicine_lots || []).find((l: any) => l.id.toString() === tx.lot_id?.toString());
-            if (lot) {
-                const newStock = tx.action === 'in' ? lot.current_stock - tx.amount : lot.current_stock + tx.amount;
-                if (newStock < 0) return alert("สต็อกในล็อตนี้ไม่พอให้ยกเลิก (อาจมีการตัดจ่ายไปแล้ว)");
-                const { error } = await supabase.from("medicine_lots").update({ current_stock: newStock }).eq("id", lot.id);
-                if (error) throw error;
-            }
-        }
-        
-        const { error: voidErr } = await supabase.from("stock_transactions").update({ 
-          status: 'voided', 
-          edit_note: `ยกเลิกรายการนี้แล้ว โดย ${session.name} วันที่ ${new Date().toLocaleString('th-TH')} (เหตุผล: ${reason})` 
-        }).eq("id", tx.id);
-        
-        if (voidErr) throw voidErr;
-
-        await fetchMedicines();
-        const { data: freshMed } = await supabase.from("medicines").select(`*, medicine_lots (*)`).eq("id", historyMed.id).single();
-        if (freshMed) await openHistoryModal(freshMed);
-
-        alert("ยกเลิกรายการสำเร็จแล้ว");
-    } catch (e: any) { alert("เกิดข้อผิดพลาด: " + e.message); }
-  }
-
   const handleApprovePending = async (tx: any) => {
     if (!confirm("ยืนยันการนำรายการรับล่วงหน้านี้ เข้าสต็อกจริงใช่หรือไม่?")) return;
     try {
@@ -454,18 +417,21 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 md:p-4 mb-4 w-full">
-          <div className="flex items-center gap-2 mb-3 text-sm font-semibold text-gray-500"><LayoutGrid size={16} /> หมวดหมู่ตู้ยา (สีตู้)</div>
+          <div className="flex items-center gap-2 mb-3 text-sm font-semibold text-gray-500"><LayoutGrid size={16} /> หมวดหมู่ตู้ยา (สีตู้หลากหลายและโดดเด่น)</div>
           <div className="flex flex-wrap gap-2 mb-3">
-            <button onClick={() => handleSelectCategory("all")} className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${selectedCategory === "all" ? "bg-gray-800 text-white border-gray-800 shadow-sm" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}>ทั้งหมด</button>
+            <button onClick={() => handleSelectCategory("all")} className={`px-3.5 py-2 rounded-lg text-sm font-bold border transition-colors shadow-sm ${selectedCategory === "all" ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-100"}`}>ทั้งหมด</button>
             {categoriesList?.map((cat, index) => {
-              const colorClass = selectedCategory === cat.id ? `${CAT_COLORS[index % CAT_COLORS.length]} text-white shadow-sm` : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50";
+              // กำหนดสีที่แตกต่างกันตามลำดับ index ของตู้ยา
+              const colorClass = selectedCategory === cat.id 
+                ? `${CAT_COLORS[index % CAT_COLORS.length]} text-white shadow-md ring-2 ring-offset-2 ring-blue-400 font-bold` 
+                : "bg-white text-gray-800 border-gray-300 hover:bg-gray-50 font-medium";
               return (
-              <div key={cat.id} className={`flex items-center gap-0.5 rounded-lg border transition-colors ${colorClass}`}>
-                <button onClick={() => handleSelectCategory(cat.id)} className="pl-3 pr-2 py-1.5 text-sm font-medium">{cat.name}</button>
-                <button onClick={() => { setEditingCategoryId(cat.id); setCategoryNameInput(cat.name); }} title="แก้ไขชื่อหมวดหมู่" className={`p-1.5 mr-1 rounded-md transition-colors ${selectedCategory === cat.id ? "text-white hover:bg-white/20" : "text-gray-400 hover:text-blue-600 hover:bg-blue-50"}`}><Edit size={14} /></button>
+              <div key={cat.id} className={`flex items-center gap-0.5 rounded-lg border px-1 transition-all shadow-sm ${colorClass}`}>
+                <button onClick={() => handleSelectCategory(cat.id)} className="pl-2.5 pr-2 py-1.5 text-sm">{cat.name}</button>
+                <button onClick={() => { setEditingCategoryId(cat.id); setCategoryNameInput(cat.name); }} title="แก้ไขชื่อหมวดหมู่" className={`p-1 rounded-md transition-colors ${selectedCategory === cat.id ? "text-white hover:bg-black/20" : "text-gray-400 hover:text-blue-600 hover:bg-blue-50"}`}><Edit size={14} /></button>
               </div>
             )})}
-            <button onClick={handleAddCategory} className="px-3 py-1.5 rounded-lg border border-dashed border-gray-400 text-gray-600 hover:bg-gray-50 text-sm font-medium flex items-center gap-1 transition-colors"><Plus size={14} /> เพิ่มตู้ยา</button>
+            <button onClick={handleAddCategory} className="px-3.5 py-2 rounded-lg border border-dashed border-gray-400 text-gray-600 hover:bg-gray-50 text-sm font-medium flex items-center gap-1 transition-colors"><Plus size={14} /> เพิ่มตู้ยา</button>
           </div>
           <div className="flex flex-col md:flex-row gap-2 mt-3 items-center">
             <div className="relative flex-1 w-full"><Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="ค้นหาชื่อยา, HosXP หรือหมายเหตุ..." className="w-full border rounded-lg pl-10 pr-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50/50 text-sm md:text-base" /></div>
@@ -766,19 +732,19 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                 <div className="space-y-3">
                   {historyLoading ? <div className="text-center text-gray-500 py-8">กำลังโหลดข้อมูล...</div> : historyRows.length === 0 ? <div className="text-center text-gray-500 py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">ยังไม่มีประวัติการรับเข้า/ตัดจ่าย</div> : (
                     historyRows.map((row: any) => {
-                      const isInc = row.action === 'in'; const isPending = row.status === 'pending'; const isVoided = row.status === 'voided';
+                      const isInc = row.action === 'in'; const isPending = row.status === 'pending';
                       const lotInfo = (historyMed.medicine_lots || []).find((l: any) => l.id.toString() === row.lot_id?.toString());
                       const pSize = lotInfo?.pack_size || 100; const pUnit = lotInfo?.unit_name || 'หน่วย';
                       
                       return (
-                        <div key={row.id} className={`flex flex-col gap-2 border rounded-xl p-3 md:p-4 shadow-sm transition-colors ${isVoided ? 'bg-gray-100 border-gray-300 opacity-75' : 'bg-white border-gray-100'}`}>
+                        <div key={row.id} className="flex flex-col gap-2 border rounded-xl p-3 md:p-4 shadow-sm bg-white border-gray-100">
                           <div className="flex items-start justify-between">
                             <div className="flex items-start gap-3 md:gap-4">
-                              <div className={`p-2 rounded-lg mt-0.5 ${isPending ? 'bg-amber-100 text-amber-600' : isVoided ? 'bg-gray-300 text-gray-600' : isInc ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                                {isVoided ? <Ban size={20} /> : isPending ? <Clock size={20} /> : isInc ? <PackagePlus size={20} /> : <PackageMinus size={20} />}
+                              <div className={`p-2 rounded-lg mt-0.5 ${isPending ? 'bg-amber-100 text-amber-600' : isInc ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                                {isPending ? <Clock size={20} /> : isInc ? <PackagePlus size={20} /> : <PackageMinus size={20} />}
                               </div>
                               <div>
-                                <div className={`text-sm md:text-base font-bold ${isPending ? 'text-amber-700' : isVoided ? 'text-gray-500 line-through' : isInc ? 'text-emerald-700' : 'text-red-700'}`}>
+                                <div className={`text-sm md:text-base font-bold ${isPending ? 'text-amber-700' : isInc ? 'text-emerald-700' : 'text-red-700'}`}>
                                   {isPending ? 'รอรับเข้า' : isInc ? 'รับเข้า' : 'ตัดจ่าย'} {formatBoxString(row.amount, pSize, pUnit)}
                                 </div>
                                 <div className="text-[11px] md:text-xs font-medium text-blue-600 mt-0.5">(รวมทั้งหมด {row.amount} {pUnit})</div>
@@ -786,15 +752,12 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                                 <div className="text-[9px] md:text-[10px] text-gray-400 mt-0.5">{formatHistoryDate(row.created_at)}</div>
                                 
                                 {isPending && <div className="mt-2 text-xs font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded border border-amber-200 inline-block">คาดว่าจะเข้า: {row.expected_date ? new Date(row.expected_date).toLocaleDateString('th-TH') : '-'}</div>}
-                                
-                                {isVoided && <div className="mt-2 text-xs text-red-600 bg-red-50 px-2.5 py-1 rounded border border-red-200 inline-block font-bold">⚠️ ยกเลิกรายการนี้แล้ว ({row.edit_note})</div>}
-                                {!isVoided && !isPending && row.edit_note && <div className="mt-2 text-[10px] text-gray-500 bg-gray-50 px-2 py-1 rounded border inline-block">[{row.edit_note}]</div>}
+                                {row.edit_note && <div className="mt-2 text-[10px] text-gray-500 bg-gray-50 px-2 py-1 rounded border inline-block">[{row.edit_note}]</div>}
                               </div>
                             </div>
                             <div className="flex flex-col items-end gap-2 shrink-0">
                                <div className="flex items-center gap-1 text-[9px] md:text-[10px] font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-md"><User size={10} /> {row.staff_name}</div>
                                {isPending && <button onClick={() => handleApprovePending(row)} className="text-[10px] md:text-xs bg-emerald-600 text-white px-2.5 py-1.5 rounded hover:bg-emerald-700">รับของเข้าสต็อก</button>}
-                               {!isVoided && !isPending && <button onClick={() => handleVoidTransaction(row)} className="text-[10px] text-red-500 hover:text-red-700 underline mt-1 border-none bg-transparent font-medium cursor-pointer">ยกเลิกรายการนี้</button>}
                             </div>
                           </div>
                         </div>
