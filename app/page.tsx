@@ -170,6 +170,8 @@ function LoginScreen({ onLogin }: { onLogin: (s: Session) => void }) {
             </div>
           </div>
         )}
+
+
       </div>
     </div>
   );
@@ -313,6 +315,9 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   const [historyMed, setHistoryMed] = useState<any>(null);
   const [historyRows, setHistoryRows] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [voidingTransaction, setVoidingTransaction] = useState<any>(null);
+  const [voidReason, setVoidReason] = useState("");
+  const [voidBusy, setVoidBusy] = useState(false);
 
   const [allTransactions, setAllTransactions] = useState<any[]>([]);
   const [globalPeriodMode, setGlobalPeriodMode] = useState<'1m' | '2m' | '3m' | 'custom'>('1m');
@@ -544,24 +549,37 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     } catch (error: any) { alert("อัปเดตสต็อกไม่สำเร็จ: " + error.message); }
   };
 
-  const handleVoidTransaction = async (row: any) => {
+  // Void แทนการแก้ไขย้อนหลัง: คงรายการเดิมไว้เป็นหลักฐาน แล้วปรับสต็อกกลับตามรายการเดิม
+  const handleVoidTransaction = (row: any) => {
     if (row.is_voided || row.status === 'voided') return;
-    if (!confirm("ยืนยันลบรายการนี้? ระบบจะคืนสต็อกกลับตามรายการเดิม และเก็บประวัติไว้")) return;
+    setVoidingTransaction(row);
+    setVoidReason('');
+  };
+
+  const confirmVoidTransaction = async () => {
+    if (!voidingTransaction || !historyMed) return;
+    const reason = voidReason.trim();
+    if (!reason) return alert('กรุณาระบุเหตุผลในการยกเลิกรายการ');
+    setVoidBusy(true);
     try {
-      const lot = (historyMed?.medicine_lots || []).find((l: any) => String(l.id) === String(row.lot_id));
-      if (lot) {
-        const delta = row.action === 'in' ? -Number(row.amount) : Number(row.amount);
-        const nextStock = Math.max(0, Number(lot.current_stock || 0) + delta);
-        const { error: lotErr } = await supabase.from('medicine_lots').update({ current_stock: nextStock }).eq('id', lot.id);
-        if (lotErr) throw lotErr;
-      }
-      const { error } = await supabase.from('stock_transactions').update({ is_voided: true, status: 'voided', voided_by: session.name, voided_at: new Date().toISOString(), void_reason: 'ลบรายการ' }).eq('id', row.id);
+      const row = voidingTransaction;
+      const { data: lot, error: lotFetchError } = await supabase.from('medicine_lots').select('id,current_stock').eq('id', row.lot_id).single();
+      if (lotFetchError) throw lotFetchError;
+      if (!lot) throw new Error('ไม่พบล็อตของรายการนี้');
+      const amount = Number(row.amount || 0);
+      const nextStock = row.action === 'in' ? Number(lot.current_stock || 0) - amount : Number(lot.current_stock || 0) + amount;
+      if (nextStock < 0) throw new Error('ไม่สามารถยกเลิกรายการรับเข้าได้ เพราะสต็อกล็อตปัจจุบันน้อยกว่ายอดของรายการนี้');
+      const { error: lotErr } = await supabase.from('medicine_lots').update({ current_stock: nextStock }).eq('id', lot.id);
+      if (lotErr) throw lotErr;
+      const { error } = await supabase.from('stock_transactions').update({ is_voided: true, status: 'voided', voided_by: session.name, voided_at: new Date().toISOString(), void_reason: reason }).eq('id', row.id);
       if (error) throw error;
+      setVoidingTransaction(null); setVoidReason('');
       const fresh = await fetchMedicines();
       const updated = fresh.find((m: any) => String(m.id) === String(historyMed.id));
-      if (updated) setHistoryMed(updated);
+      if (updated) { setHistoryMed(updated); setSelectedMed(updated); }
       await openHistoryModal(updated || historyMed);
-    } catch (error: any) { alert('ลบรายการไม่สำเร็จ: ' + error.message); }
+    } catch (error: any) { alert('ยกเลิกรายการไม่สำเร็จ: ' + error.message); }
+    finally { setVoidBusy(false); }
   };
 
   const openStockModal = (med: any, action: 'in' | 'out') => {
@@ -1499,6 +1517,32 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                       )
                     })
                   )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {voidingTransaction && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[80]">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+              <div className="p-5 border-b bg-red-50 border-red-100">
+                <h2 className="text-lg font-bold text-red-800">ยกเลิกรายการรับเข้า/ตัดจ่าย</h2>
+                <p className="text-xs text-red-600 mt-1">ระบบจะไม่แก้ไขรายการเดิม แต่จะ Void รายการและปรับสต็อกกลับตามรายการเดิม</p>
+              </div>
+              <div className="p-5 space-y-4">
+                <div className="bg-gray-50 rounded-xl p-3 text-sm">
+                  <div><b>{voidingTransaction.action === 'in' ? 'รับเข้า' : 'ตัดจ่าย'}</b> {voidingTransaction.amount} หน่วย</div>
+                  <div className="text-xs text-gray-500 mt-1">EXP: {voidingTransaction.exp_date || '-'} · ผู้บันทึก: {voidingTransaction.staff_name || '-'}</div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">เหตุผลที่ยกเลิกรายการ *</label>
+                  <textarea autoFocus rows={4} value={voidReason} onChange={(e) => setVoidReason(e.target.value)} placeholder="เช่น รับผิด EXP / ผิดจำนวน / ผิดหน่วย / บันทึกซ้ำ" className="w-full border border-gray-300 rounded-xl p-3 outline-none focus:ring-2 focus:ring-red-500 resize-none" />
+                  <p className="text-[11px] text-gray-400 mt-1">ผู้ยกเลิก: {session.name}</p>
+                </div>
+                <div className="flex gap-3">
+                  <button type="button" disabled={voidBusy} onClick={() => { setVoidingTransaction(null); setVoidReason(''); }} className="flex-1 border border-gray-300 p-3 rounded-xl font-medium">ยกเลิก</button>
+                  <button type="button" disabled={voidBusy || !voidReason.trim()} onClick={confirmVoidTransaction} className="flex-1 bg-red-600 hover:bg-red-700 text-white p-3 rounded-xl font-medium disabled:opacity-50">{voidBusy ? 'กำลังยกเลิก...' : 'ยืนยันยกเลิกรายการ'}</button>
                 </div>
               </div>
             </div>
