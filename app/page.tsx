@@ -6,7 +6,7 @@ import {
   Plus, PackagePlus, PackageMinus, X, Calculator, Edit, Trash2, CalendarDays,
   User, Users, Lock, LogOut, KeyRound, ShieldCheck, CheckCircle2, CircleDashed,
   Search, Tag, Check, LayoutGrid, History, TrendingDown, CalendarRange,
-  FileText, Printer, QrCode, ArrowLeft, Upload, Download, ArrowUpDown
+  FileText, Printer, QrCode, ArrowLeft, Upload, Download, ArrowUpDown, ToggleLeft, ToggleRight
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import * as XLSX from "xlsx";
@@ -285,7 +285,8 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
 
   const [isMedModalOpen, setIsMedModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [medFormData, setMedFormData] = useState({ id: "", name: "", barcode: "", hosxp_icode: "", cabinet_category: "1", min_stock: "" });
+  const [medFormData, setMedFormData] = useState({ id: "", name: "", hosxp_icode: "", cabinet_category: "1", min_stock: "", note: "" });
+  const [reportTargetCategory, setReportTargetCategory] = useState<number | "all">("all");
 
   const [isStockModalOpen, setIsStockModalOpen] = useState(false);
   const [selectedMed, setSelectedMed] = useState<any>(null);
@@ -298,13 +299,17 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   const [inputMode, setInputMode] = useState<'base' | 'pack'>('base');
   const [inputAmount, setInputAmount] = useState("");
   const [inputPackCount, setInputPackCount] = useState("");
+  const [scheduledDate, setScheduledDate] = useState("");
+  const [medicineEnabledBusy, setMedicineEnabledBusy] = useState<string | null>(null);
 
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   
   // ข้อ 6: ตู้ยาแบบ Dynamic ไม่จำกัด
-  const [categoriesList, setCategoriesList] = useState<{id: number, name: string}[]>([]);
+  const [categoriesList, setCategoriesList] = useState<{id: number, name: string, color?: string}[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<number | "all">("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const cabinetPreferenceKey = `${SESSION_KEY}_cabinet_${session.id}`;
+  const [preferredCabinet, setPreferredCabinet] = useState<number | "all">("all");
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [categoryNameInput, setCategoryNameInput] = useState("");
   const [categoryBusy, setCategoryBusy] = useState(false);
@@ -335,13 +340,27 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   const [importData, setImportData] = useState<any[]>([]);
   const [isImporting, setIsImporting] = useState(false);
 
+  const processScheduledReceipts = async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data: pending, error } = await supabase.from('stock_transactions').select('*').eq('action', 'in').eq('status', 'pending').lte('scheduled_date', today).eq('is_voided', false);
+    if (error) return;
+    for (const tx of pending || []) {
+      const { data: lot } = await supabase.from('medicine_lots').select('current_stock').eq('id', tx.lot_id).single();
+      if (!lot) continue;
+      const { error: lotErr } = await supabase.from('medicine_lots').update({ current_stock: (lot.current_stock || 0) + tx.amount }).eq('id', tx.lot_id);
+      if (lotErr) continue;
+      await supabase.from('stock_transactions').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', tx.id);
+    }
+  };
+
   const fetchMedicines = async () => {
     try {
+      await processScheduledReceipts();
       const { data, error } = await supabase.from("medicines").select(`*, medicine_lots (*)`).order("id", { ascending: false });
       if (error) throw error;
       if (data) setMedicines(data);
 
-      const { data: txData } = await supabase.from("stock_transactions").select("*").eq("action", "out");
+      const { data: txData } = await supabase.from("stock_transactions").select("*").eq("action", "out").eq("is_voided", false);
       if (txData) setAllTransactions(txData);
     } catch (error) { console.error("Error fetching medicines:", error); } finally { setLoading(false); }
   };
@@ -356,7 +375,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     } catch (error) { console.error("Error fetching categories:", error); }
   };
 
-  useEffect(() => { fetchMedicines(); fetchCategories(); }, []);
+  useEffect(() => { fetchMedicines(); fetchCategories(); const saved = localStorage.getItem(cabinetPreferenceKey); if (saved) { const n = Number(saved); if (!Number.isNaN(n)) { setPreferredCabinet(n); setSelectedCategory(n); } } }, []);
 
   useEffect(() => {
     if (isHistoryModalOpen && historyMed) {
@@ -407,6 +426,58 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     return cat ? cat.name : id;
   };
 
+  const getCategoryColor = (id: string | number) => {
+    const palette = ["#2563eb", "#059669", "#d97706", "#dc2626", "#7c3aed", "#0891b2", "#db2777", "#65a30d"];
+    const cat = categoriesList.find(c => String(c.id) === String(id));
+    if (cat?.color) return cat.color;
+    const idx = Math.max(0, categoriesList.findIndex(c => String(c.id) === String(id)));
+    return palette[idx % palette.length];
+  };
+
+  const getLatestPackInfo = (med: any) => {
+    const lots = [...(med.medicine_lots || [])].filter((l:any) => l.pack_size > 0).sort((a:any,b:any) => new Date(b.created_at || b.exp_date).getTime() - new Date(a.created_at || a.exp_date).getTime());
+    const lot = lots[0];
+    return { packSize: lot?.pack_size || 100, unitName: lot?.unit_name || 'หน่วย' };
+  };
+
+  const formatPackDisplay = (total: number, med: any) => {
+    const { packSize, unitName } = getLatestPackInfo(med);
+    const packs = Math.floor(total / packSize);
+    const remainder = total % packSize;
+    return { main: `${packs} กล่อง × ${packSize}`, sub: `(รวม ${total} ${unitName}${remainder ? ` / เศษ ${remainder} ${unitName}` : ''})` };
+  };
+
+  const toggleMedicineEnabled = async (med: any) => {
+    setMedicineEnabledBusy(String(med.id));
+    try {
+      const next = med.is_enabled === false ? true : false;
+      const { error } = await supabase.from('medicines').update({ is_enabled: next }).eq('id', med.id);
+      if (error) throw error;
+      await fetchMedicines();
+    } catch (e:any) {
+      alert('เปลี่ยนสถานะยาไม่สำเร็จ: ' + e.message);
+    } finally { setMedicineEnabledBusy(null); }
+  };
+
+  const voidTransaction = async (row:any) => {
+    if (!confirm(`ยืนยันลบรายการ ${row.action === 'in' ? 'รับเข้า' : 'ตัดจ่าย'} จำนวน ${row.amount} ชิ้น?`)) return;
+    try {
+      const lot = (historyMed?.medicine_lots || []).find((l:any) => String(l.id) === String(row.lot_id));
+      if (!lot) throw new Error('ไม่พบล็อตของรายการ');
+      const delta = row.action === 'in' ? -row.amount : row.amount;
+      if (row.status !== 'pending') {
+        const { error: lotErr } = await supabase.from('medicine_lots').update({ current_stock: Math.max(0, lot.current_stock + delta) }).eq('id', lot.id);
+        if (lotErr) throw lotErr;
+      }
+      const { error } = await supabase.from('stock_transactions').update({ is_voided: true, voided_at: new Date().toISOString(), voided_by: session.name, void_reason: 'แก้ไขรายการเดิม' }).eq('id', row.id);
+      if (error) throw error;
+      const audit = { medicine_id: String(historyMed.id), lot_id: String(row.lot_id), exp_date: row.exp_date, action: 'adjustment', amount: 0, staff_name: session.name, status: 'completed', note: `แก้ไข/ลบรายการเดิมเมื่อ ${formatHistoryDate(new Date().toISOString())}` };
+      await supabase.from('stock_transactions').insert([audit]);
+      await fetchMedicines();
+      await openHistoryModal(historyMed);
+    } catch(e:any) { alert('แก้ไขรายการไม่สำเร็จ: ' + e.message); }
+  };
+
   const filteredMedicines = medicines
     .filter((med) => selectedCategory === "all" || String(med.cabinet_category) === String(selectedCategory))
     .filter((med) => {
@@ -425,10 +496,10 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     try {
       const payload = {
         name: medFormData.name,
-        barcode: medFormData.barcode === "" ? null : medFormData.barcode,
         hosxp_icode: medFormData.hosxp_icode,
         cabinet_category: medFormData.cabinet_category,
         min_stock: parseInt(medFormData.min_stock) || 0,
+        note: medFormData.note || null,
       };
       if (isEditing) {
         const { error } = await supabase.from("medicines").update(payload).eq("id", medFormData.id);
@@ -443,15 +514,15 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
 
   const openAddMedModal = () => {
     setIsEditing(false);
-    setMedFormData({ id: "", name: "", barcode: "", hosxp_icode: "", cabinet_category: categoriesList.length > 0 ? String(categoriesList[0].id) : "1", min_stock: "" });
+    setMedFormData({ id: "", name: "", hosxp_icode: "", cabinet_category: categoriesList.length > 0 ? String(categoriesList[0].id) : "1", min_stock: "", note: "" });
     setIsMedModalOpen(true);
   };
 
   const openEditMedModal = (med: any) => {
     setIsEditing(true);
     setMedFormData({
-      id: med.id, name: med.name, barcode: med.barcode || "", hosxp_icode: med.hosxp_icode || "",
-      cabinet_category: med.cabinet_category || (categoriesList.length > 0 ? String(categoriesList[0].id) : "1"), min_stock: med.min_stock?.toString() || "0"
+      id: med.id, name: med.name, hosxp_icode: med.hosxp_icode || "",
+      cabinet_category: med.cabinet_category || (categoriesList.length > 0 ? String(categoriesList[0].id) : "1"), min_stock: med.min_stock?.toString() || "0", note: med.note || ""
     });
     setIsMedModalOpen(true);
   };
@@ -464,19 +535,17 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     } catch (error: any) { alert("ลบไม่สำเร็จ: " + error.message); }
   };
 
-  const logTransaction = async (opts: { lot_id: string; exp_date: string; action: 'in' | 'out'; amount: number }) => {
-    try {
-      const { error } = await supabase.from("stock_transactions").insert([{
-        medicine_id: String(selectedMed.id), lot_id: String(opts.lot_id), exp_date: opts.exp_date, action: opts.action, amount: opts.amount, staff_name: session.name,
-      }]);
-      if (error) throw error;
-    } catch (error: any) { alert("อัปเดตสต็อกสำเร็จ แต่บันทึกประวัติไม่สำเร็จ: " + (error?.message || "ไม่ทราบสาเหตุ")); }
+  const logTransaction = async (opts: { lot_id: string; exp_date: string; action: 'in' | 'out'; amount: number; scheduled_date?: string | null; note?: string | null }) => {
+    const { error } = await supabase.from("stock_transactions").insert([{
+      medicine_id: String(selectedMed.id), lot_id: String(opts.lot_id), exp_date: opts.exp_date, action: opts.action, amount: opts.amount, staff_name: session.name,
+      scheduled_date: opts.scheduled_date || null, status: opts.scheduled_date ? 'pending' : 'completed', note: opts.note || null,
+    }]);
+    if (error) throw error;
   };
 
   const handleUpdateStock = async (e: React.FormEvent) => {
     e.preventDefault();
     let totalItems = 0;
-
     if (inputMode === 'base') {
       totalItems = parseInt(inputAmount);
       if (!totalItems || totalItems <= 0) return alert("กรุณาระบุจำนวนให้ถูกต้อง");
@@ -488,10 +557,27 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
       if (!packs || packs <= 0 || !size || size <= 0) return alert("กรุณาระบุข้อมูลให้ครบถ้วน");
       totalItems = Math.round(packs * size);
     }
-
     try {
       if (stockAction === 'in') {
-        if (stockInMode === 'existing') {
+        if (!stockExpDate && stockInMode === 'new') return alert("กรุณาระบุวันหมดอายุ (EXP)");
+        if (scheduledDate) {
+          const today = new Date().toISOString().slice(0,10);
+          if (scheduledDate <= today) return alert("วันที่รับเข้าล่วงหน้าต้องเป็นอนาคต");
+          let pendingLotId = selectedLotId;
+          let exp = stockExpDate;
+          let packSize = parseInt(stockPackSize) || 100;
+          let unit = stockUnitName;
+          if (stockInMode === 'existing') {
+            const lot = (selectedMed.medicine_lots || []).find((l: any) => String(l.id) === String(selectedLotId));
+            if (!lot) return alert("ไม่พบข้อมูลล็อต");
+            pendingLotId = lot.id; exp = lot.exp_date; packSize = lot.pack_size; unit = lot.unit_name;
+          } else {
+            const { data: newLot, error } = await supabase.from("medicine_lots").insert([{ medicine_id: selectedMed.id, exp_date: exp, pack_size: packSize, unit_name: unit, current_stock: 0 }]).select().single();
+            if (error) throw error;
+            pendingLotId = newLot.id;
+          }
+          await logTransaction({ lot_id: pendingLotId, exp_date: exp, action: 'in', amount: totalItems, scheduled_date: scheduledDate, note: `รอรับเข้า ${scheduledDate}` });
+        } else if (stockInMode === 'existing') {
           if (!selectedLotId) return alert("กรุณาเลือกล็อตที่มีอยู่");
           const existingLot = (selectedMed.medicine_lots || []).find((l: any) => String(l.id) === String(selectedLotId));
           if (!existingLot) return alert("ไม่พบข้อมูลล็อตในระบบ");
@@ -499,7 +585,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
           if (error) throw error;
           await logTransaction({ lot_id: existingLot.id, exp_date: existingLot.exp_date, action: 'in', amount: totalItems });
         } else {
-          if (!stockExpDate) return alert("กรุณาระบุวันหมดอายุ (EXP)");
           const existingLot = (selectedMed.medicine_lots || []).find((l: any) => l.exp_date === stockExpDate && l.pack_size === parseInt(stockPackSize) && l.unit_name === stockUnitName);
           if (existingLot) {
             const { error } = await supabase.from("medicine_lots").update({ current_stock: existingLot.current_stock + totalItems }).eq("id", existingLot.id);
@@ -520,13 +605,13 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
         if (error) throw error;
         await logTransaction({ lot_id: lotToDeduct.id, exp_date: lotToDeduct.exp_date, action: 'out', amount: totalItems });
       }
-      setIsStockModalOpen(false); await fetchMedicines();
-      if (isHistoryModalOpen) openHistoryModal(selectedMed); 
+      setIsStockModalOpen(false); setScheduledDate(""); await fetchMedicines();
+      if (isHistoryModalOpen) openHistoryModal(selectedMed);
     } catch (error: any) { alert("อัปเดตสต็อกไม่สำเร็จ: " + error.message); }
   };
 
   const openStockModal = (med: any, action: 'in' | 'out') => {
-    setSelectedMed(med); setStockAction(action); setInputMode('base'); setInputAmount(""); setInputPackCount(""); setStockExpDate(""); setSelectedLotId("");
+    setSelectedMed(med); setStockAction(action); setInputMode('base'); setInputAmount(""); setInputPackCount(""); setStockExpDate(""); setSelectedLotId(""); setScheduledDate("");
     if (action === 'in') {
       if (med.medicine_lots && med.medicine_lots.length > 0) {
         setStockInMode('existing'); const firstLot = med.medicine_lots[0];
@@ -595,11 +680,12 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
       if (error) throw error;
 
       const grouped: any = {};
-      const medsToProcess = reportTargetId === "all" ? medicines : medicines.filter(m => m.id.toString() === reportTargetId);
+      const medsByCabinet = reportTargetCategory === "all" ? medicines : medicines.filter(m => String(m.cabinet_category) === String(reportTargetCategory));
+      const medsToProcess = reportTargetId === "all" ? medsByCabinet : medsByCabinet.filter(m => m.id.toString() === reportTargetId);
       
       medsToProcess.forEach(med => {
          let currentTotalStock = (med.medicine_lots || []).reduce((sum: number, lot: any) => sum + lot.current_stock, 0);
-         const medTxs = (txData || []).filter(tx => tx.medicine_id.toString() === med.id.toString());
+         const medTxs = (txData || []).filter(tx => tx.medicine_id.toString() === med.id.toString() && !tx.is_voided);
          
          let runningBal = currentTotalStock;
          const processedTxs = medTxs.map(tx => {
@@ -688,7 +774,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     setIsImporting(true);
     try {
       const medsPayload = validData.map(d => ({
-        name: d.name, cabinet_category: d.cabinet_category, hosxp_icode: d.hosxp_icode || null, barcode: d.barcode || null, min_stock: 0
+        name: d.name, cabinet_category: d.cabinet_category, hosxp_icode: d.hosxp_icode || null, barcode: d.barcode || null, min_stock: 0, is_enabled: true
       }));
       const { data: insertedMeds, error: medErr } = await supabase.from('medicines').insert(medsPayload).select();
       if (medErr) throw medErr;
@@ -756,7 +842,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                           <td className="border border-gray-400 p-2 text-center text-black font-medium">{tx.action === 'out' ? tx.amountText : '-'}</td>
                           <td className="border border-gray-400 p-2 text-center text-black font-bold">{tx.balanceText}</td>
                           <td className="border border-gray-400 p-2 text-black">{tx.staff_name}</td>
-                          <td className="border border-gray-400 p-2 text-black text-xs">EXP: {tx.lotExp}</td>
+                          <td className="border border-gray-400 p-2 text-black text-xs">EXP: {tx.lotExp}{tx.status === 'pending' ? <><br/>รอรับเข้า: {tx.scheduled_date}</> : null}{tx.note ? <><br/>{tx.note}</> : null}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -874,7 +960,7 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
           
           <div className="flex flex-wrap gap-2 mb-3">
             <button
-              onClick={() => setSelectedCategory("all")}
+              onClick={() => { setSelectedCategory("all"); setPreferredCabinet("all"); localStorage.removeItem(cabinetPreferenceKey); }}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
                 selectedCategory === "all" ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
               }`}
@@ -884,13 +970,13 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
             {categoriesList.map((cat) => (
               <div
                 key={cat.id}
-                className={`flex items-center gap-0.5 rounded-lg border transition-colors ${
-                  selectedCategory === cat.id ? "bg-blue-600 border-blue-600 shadow-sm" : "bg-white border-gray-200 hover:bg-gray-50"
-                }`}
+                style={{ borderColor: getCategoryColor(cat.id), backgroundColor: selectedCategory === cat.id ? getCategoryColor(cat.id) : `${getCategoryColor(cat.id)}12` }}
+                className="flex items-center gap-0.5 rounded-lg border transition-colors"
               >
                 <button
-                  onClick={() => setSelectedCategory(cat.id)}
-                  className={`pl-3 pr-2 py-1.5 text-sm font-medium ${selectedCategory === cat.id ? "text-white" : "text-gray-600"}`}
+                  onClick={() => { setSelectedCategory(cat.id); setPreferredCabinet(cat.id); localStorage.setItem(cabinetPreferenceKey, String(cat.id)); }}
+                  style={{ color: selectedCategory === cat.id ? '#fff' : getCategoryColor(cat.id) }}
+                  className="pl-3 pr-2 py-1.5 text-sm font-medium"
                 >
                   {cat.name}
                 </button>
@@ -965,9 +1051,12 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                       return (
                         <tr key={med.id} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors">
                           <td className="p-4 align-top">
-                            <div className="flex gap-2">
+                            <div className="flex flex-col gap-2 items-center">
                               <button onClick={() => openEditMedModal(med)} className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-blue-100 hover:text-blue-700 transition-colors"><Edit size={16} /></button>
                               <button onClick={() => handleDeleteMed(med.id)} className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-red-100 hover:text-red-700 transition-colors"><Trash2 size={16} /></button>
+                              <button onClick={() => toggleMedicineEnabled(med)} title={med.is_enabled === false ? 'คลังเป็น 0' : 'เบิกได้'} disabled={medicineEnabledBusy === String(med.id)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${med.is_enabled === false ? 'bg-red-500' : 'bg-emerald-500'}`}>
+                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${med.is_enabled === false ? 'translate-x-1' : 'translate-x-6'}`} />
+                              </button>
                             </div>
                           </td>
                           <td className="p-4 align-top">
@@ -1006,12 +1095,9 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                           </td>
                           <td className="p-4 align-top">
                             <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-200 text-xs space-y-1.5">
-                              <div className="flex justify-between border-b pb-1"><span className="text-gray-500">ใช้รวม ({medStats.daysDiff} วัน):</span><span className="font-bold text-gray-800">{medStats.totalUsage} {mainUnit}</span></div>
-                              {formatToPack(medStats.totalUsage, med) && <div className="text-[10px] font-medium text-blue-600 text-right">{formatToPack(medStats.totalUsage, med)}</div>}
-                              <div className="flex justify-between text-amber-800 pt-0.5"><span>รอบเบิก 1 สัปดาห์:</span><span className="font-bold">{medStats.target1Week} {mainUnit}</span></div>
-                              {formatToPack(medStats.target1Week, med) && <div className="text-[10px] font-medium text-amber-700 text-right">{formatToPack(medStats.target1Week, med)}</div>}
-                              <div className="flex justify-between text-emerald-800 pt-0.5 border-t border-dashed"><span>รอบเบิก 2 สัปดาห์:</span><span className="font-bold">{medStats.target2Weeks} {mainUnit}</span></div>
-                              {formatToPack(medStats.target2Weeks, med) && <div className="text-[10px] font-medium text-emerald-700 text-right">{formatToPack(medStats.target2Weeks, med)}</div>}
+                              <div className="flex justify-between border-b pb-1"><span className="text-gray-500">ใช้รวม ({medStats.daysDiff} วัน):</span><span className="font-bold text-gray-800">{formatPackDisplay(medStats.totalUsage, med).main}</span></div><div className="text-[10px] text-gray-500 text-right">{formatPackDisplay(medStats.totalUsage, med).sub}</div>
+                              <div className="flex justify-between text-amber-800 pt-0.5"><span>รอบเบิก 1 สัปดาห์:</span><span className="font-bold">{formatPackDisplay(medStats.target1Week, med).main}</span></div><div className="text-[10px] text-gray-500 text-right">{formatPackDisplay(medStats.target1Week, med).sub}</div>
+                              <div className="flex justify-between text-emerald-800 pt-0.5 border-t border-dashed"><span>รอบเบิก 2 สัปดาห์:</span><span className="font-bold">{formatPackDisplay(medStats.target2Weeks, med).main}</span></div><div className="text-[10px] text-gray-500 text-right">{formatPackDisplay(medStats.target2Weeks, med).sub}</div>
                             </div>
                           </td>
                           <td className="p-4 text-center align-top">
@@ -1043,9 +1129,12 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                         <div className="text-xs text-gray-500 mt-1">รหัส HosXP: {med.hosxp_icode || "-"} {med.barcode ? `| บาร์โค้ด: ${med.barcode}` : ''}</div>
                         <div className="text-[10px] mt-1 font-medium bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full w-fit">ตู้ยา: {getCategoryName(med.cabinet_category)}</div>
                       </div>
-                      <div className="flex gap-1">
+                      <div className="flex flex-col items-center gap-1">
                          <button onClick={() => openEditMedModal(med)} className="p-1.5 bg-gray-50 text-gray-600 rounded-md hover:bg-blue-100"><Edit size={16} /></button>
                          <button onClick={() => handleDeleteMed(med.id)} className="p-1.5 bg-gray-50 text-gray-600 rounded-md hover:bg-red-100"><Trash2 size={16} /></button>
+                         <button onClick={() => toggleMedicineEnabled(med)} title={med.is_enabled === false ? 'คลังเป็น 0' : 'เบิกได้'} className={`relative inline-flex h-5 w-9 items-center rounded-full ${med.is_enabled === false ? 'bg-red-500' : 'bg-emerald-500'}`}>
+                           <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white ${med.is_enabled === false ? 'translate-x-1' : 'translate-x-5'}`} />
+                         </button>
                       </div>
                     </div>
 
@@ -1081,9 +1170,9 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                     {/* สถิติ */}
                     <div className="bg-blue-50/40 p-2.5 rounded-lg border border-blue-100/50 mt-1">
                       <div className="text-[10px] font-semibold text-gray-500 mb-1.5">สถิติและเป้าหมายสต็อก:</div>
-                      <div className="flex justify-between text-xs mb-1"><span className="text-gray-600">ใช้รวม ({medStats.daysDiff} วัน):</span><span className="font-bold">{medStats.totalUsage} {mainUnit}</span></div>
-                      <div className="flex justify-between text-xs mb-1"><span className="text-amber-700">เบิก 1 สัปดาห์:</span><span className="font-bold text-amber-700">{medStats.target1Week} {mainUnit}</span></div>
-                      <div className="flex justify-between text-xs"><span className="text-emerald-700">เบิก 2 สัปดาห์:</span><span className="font-bold text-emerald-700">{medStats.target2Weeks} {mainUnit}</span></div>
+                      <div className="flex justify-between text-xs mb-1"><span className="text-gray-600">ใช้รวม ({medStats.daysDiff} วัน):</span><span className="font-bold">{formatPackDisplay(medStats.totalUsage, med).main}</span></div><div className="text-[10px] text-gray-500 text-right mb-1">{formatPackDisplay(medStats.totalUsage, med).sub}</div>
+                      <div className="flex justify-between text-xs mb-1"><span className="text-amber-700">เบิก 1 สัปดาห์:</span><span className="font-bold text-amber-700">{formatPackDisplay(medStats.target1Week, med).main}</span></div>
+                      <div className="flex justify-between text-xs"><span className="text-emerald-700">เบิก 2 สัปดาห์:</span><span className="font-bold text-emerald-700">{formatPackDisplay(medStats.target2Weeks, med).main}</span></div>
                     </div>
                   </div>
                 )
@@ -1163,10 +1252,6 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                     <label className="block text-sm font-medium mb-1.5 text-gray-700">ชื่อยา *</label>
                     <input type="text" required className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.name} onChange={(e) => setMedFormData({ ...medFormData, name: e.target.value })} />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1.5 text-gray-700">บาร์โค้ด</label>
-                    <input type="text" className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.barcode} onChange={(e) => setMedFormData({ ...medFormData, barcode: e.target.value })} />
-                  </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div><label className="block text-sm font-medium mb-1.5 text-gray-700">รหัส HosXP</label><input type="text" className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500" value={medFormData.hosxp_icode} onChange={(e) => setMedFormData({ ...medFormData, hosxp_icode: e.target.value })} /></div>
@@ -1176,6 +1261,10 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                       {categoriesList.map(cat => <option key={cat.id} value={cat.id.toString()}>{cat.name}</option>)}
                     </select>
                   </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1.5 text-gray-700">หมายเหตุ</label>
+                  <textarea rows={3} className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 resize-none" value={medFormData.note} onChange={(e) => setMedFormData({ ...medFormData, note: e.target.value })} placeholder="เช่น จุดจัดเก็บ / หมายเหตุเพิ่มเติม" />
                 </div>
                 <div className="pt-4 flex gap-3">
                   <button type="button" onClick={() => setIsMedModalOpen(false)} className="flex-1 border border-gray-300 p-3 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors">ยกเลิก</button>
@@ -1191,20 +1280,27 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden">
               <div className="flex justify-between items-center p-5 border-b bg-blue-50 border-blue-100">
                 <h2 className="text-lg font-bold flex items-center gap-2 text-blue-900"><FileText size={18} /> พิมพ์รายงาน Stock Card</h2>
-                <button onClick={() => setIsReportModalOpen(false)} className="p-1 hover:bg-blue-100 rounded-md transition-colors"><X size={20} className="text-blue-500" /></button>
+                <button onClick={() => setIsReportModalOpen(false)} className="p-1 hover:bg-blue-100 rounded-md"><X size={20} className="text-blue-500" /></button>
               </div>
               <div className="p-6 space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-gray-700">เลือกรายการที่ต้องการพิมพ์</label>
-                  <select className="w-full border border-gray-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500 bg-white" value={reportTargetId} onChange={(e) => setReportTargetId(e.target.value)}>
-                    <option value="all">-- พิมพ์ยาทั้งหมด --</option>
-                    {medicines.map(m => <option key={m.id} value={m.id}>{m.name} {m.hosxp_icode ? `(${m.hosxp_icode})` : ''}</option>)}
+                  <label className="block text-sm font-medium mb-2 text-gray-700">เลือกตู้ยา (Cabinet)</label>
+                  <select className="w-full border border-gray-300 rounded-lg p-3 bg-white" value={reportTargetCategory} onChange={(e) => { setReportTargetCategory(e.target.value === 'all' ? 'all' : Number(e.target.value)); setReportTargetId('all'); }}>
+                    <option value="all">-- ทุกตู้ยา --</option>
+                    {categoriesList.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-gray-700">เลือกชื่อยา</label>
+                  <select className="w-full border border-gray-300 rounded-lg p-3 bg-white" value={reportTargetId} onChange={(e) => setReportTargetId(e.target.value)}>
+                    <option value="all">-- พิมพ์ทุกยาในตู้ที่เลือก --</option>
+                    {medicines.filter(m => reportTargetCategory === 'all' || String(m.cabinet_category) === String(reportTargetCategory)).map(m => <option key={m.id} value={m.id}>{m.name} {m.hosxp_icode ? `(${m.hosxp_icode})` : ''}</option>)}
                   </select>
                 </div>
                 <div className="pt-4 flex gap-3">
-                  <button onClick={() => setIsReportModalOpen(false)} className="flex-1 border border-gray-300 p-3 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors">ยกเลิก</button>
-                  <button onClick={handleGenerateReport} disabled={isGeneratingReport} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-medium transition-colors disabled:opacity-60 flex justify-center items-center gap-2">
-                    {isGeneratingReport ? "กำลังดึงข้อมูล..." : <><Printer size={18}/> สร้าง PDF</>}
+                  <button onClick={() => setIsReportModalOpen(false)} className="flex-1 border border-gray-300 p-3 rounded-xl font-medium text-gray-700 hover:bg-gray-50">ยกเลิก</button>
+                  <button onClick={handleGenerateReport} disabled={isGeneratingReport} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-medium disabled:opacity-60 flex justify-center items-center gap-2">
+                    {isGeneratingReport ? 'กำลังดึงข้อมูล...' : <><Printer size={18}/> สร้าง PDF</>}
                   </button>
                 </div>
               </div>
@@ -1333,6 +1429,13 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                     </div>
                   )}
                 </div>
+                {stockAction === 'in' && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <label className="block text-sm font-medium text-amber-900 mb-1">รับเข้าสต็อกล่วงหน้า (เลือกวันที่จะเข้าจริง)</label>
+                    <input type="date" min={new Date(Date.now()+86400000).toISOString().slice(0,10)} className="w-full border border-amber-300 rounded-lg p-2.5 bg-white" value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} />
+                    {scheduledDate && <div className="text-xs text-amber-700 mt-1">ยอดนี้จะยังไม่บวกในสต็อกจนถึงวันที่ {scheduledDate}</div>}
+                  </div>
+                )}
 
                 <div className="pt-4 flex gap-3">
                   <button type="button" onClick={() => setIsStockModalOpen(false)} className="flex-1 border p-3 rounded-lg font-medium">ยกเลิก</button>
@@ -1421,8 +1524,8 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
               <div className="bg-white rounded-2xl p-5 md:p-6 shadow-sm border border-gray-100">
                 <h3 className="text-sm font-bold flex items-center gap-2 mb-4 text-gray-700 border-b pb-3 border-gray-100"><History size={18} /> ประวัติการทำรายการล่าสุด</h3>
                 <div className="space-y-3">
-                  {historyLoading ? <div className="text-center text-gray-500 py-8">กำลังโหลดข้อมูล...</div> : historyRows.length === 0 ? <div className="text-center text-gray-500 py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">ยังไม่มีประวัติการรับเข้า/ตัดจ่าย</div> : (
-                    historyRows.map((row: any) => {
+                  {historyLoading ? <div className="text-center text-gray-500 py-8">กำลังโหลดข้อมูล...</div> : historyRows.filter((r:any) => !r.is_voided).length === 0 ? <div className="text-center text-gray-500 py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">ยังไม่มีประวัติการรับเข้า/ตัดจ่าย</div> : (
+                    historyRows.filter((r:any) => !r.is_voided).map((row: any) => {
                       const isInc = row.action === 'in';
                       const lotInfo = (historyMed.medicine_lots || []).find((l: any) => l.id.toString() === row.lot_id?.toString());
                       const pSize = lotInfo?.pack_size || 100;
@@ -1432,20 +1535,21 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                       return (
                         <div key={row.id} className="flex items-start justify-between border border-gray-100 bg-white rounded-xl p-3 md:p-4 shadow-sm hover:bg-gray-50/50 transition-colors">
                           <div className="flex items-start gap-3 md:gap-4">
-                            <div className={`p-2 md:p-2.5 rounded-lg mt-0.5 ${isInc ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                              {isInc ? <PackagePlus size={20} /> : <PackageMinus size={20} />}
+                            <div className={`p-2 md:p-2.5 rounded-lg mt-0.5 ${row.action === 'adjustment' ? 'bg-blue-50 text-blue-600' : isInc ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                              {row.action === 'adjustment' ? <Edit size={20} /> : isInc ? <PackagePlus size={20} /> : <PackageMinus size={20} />}
                             </div>
                             <div>
-                              <div className={`text-sm md:text-base font-bold ${isInc ? 'text-emerald-700' : 'text-red-700'}`}>
-                                {isInc ? 'รับเข้า' : 'ตัดจ่าย'} {row.amount} {pUnit}
+                              <div className={`text-sm md:text-base font-bold ${row.action === 'adjustment' ? 'text-blue-700' : row.status === 'pending' ? 'text-amber-700' : isInc ? 'text-emerald-700' : 'text-red-700'}`}>
+                                {row.action === 'adjustment' ? 'แก้ไขรายการ' : row.status === 'pending' ? 'รอรับเข้า' : (isInc ? 'รับเข้า' : 'ตัดจ่าย')} {row.action === 'adjustment' ? '' : `${fPacks} กล่อง × ${pSize}`}
                               </div>
-                              <div className="text-[11px] md:text-xs font-medium text-blue-600 mt-0.5">(≈ {fPacks} กล่อง {fRem > 0 ? `เศษ ${fRem}` : ''})</div>
+                              {row.action !== 'adjustment' && <div className="text-[11px] md:text-xs font-medium text-gray-500 mt-0.5">(รวม {row.amount} {pUnit}){row.status === 'pending' && <span className="text-amber-700 ml-1">จะเข้า {row.scheduled_date}</span>}</div>}
                               <div className="text-[10px] md:text-xs text-gray-500 flex items-center gap-1 mt-1.5"><CalendarDays size={12} /> EXP: {row.exp_date || "-"}</div>
                               <div className="text-[9px] md:text-[10px] text-gray-400 mt-0.5">{formatHistoryDate(row.created_at)}</div>
                             </div>
                           </div>
-                          <div className="flex items-center gap-1 text-[9px] md:text-[10px] font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-md shrink-0">
-                            <User size={10} /> {row.staff_name}
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            <div className="flex items-center gap-1 text-[9px] md:text-[10px] font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-md"><User size={10} /> {row.staff_name}</div>
+                            {row.action !== 'adjustment' && <button onClick={() => voidTransaction(row)} className="text-[9px] text-red-600 hover:text-red-800 underline">แก้ไข/ลบรายการนี้</button>}
                           </div>
                         </div>
                       )
