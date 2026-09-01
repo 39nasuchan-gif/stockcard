@@ -58,7 +58,17 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const [isChangePwdModalOpen, setIsChangePwdModalOpen] = useState(false); const [oldPwd, setOldPwd] = useState(""); const [newPwd, setNewPwd] = useState(""); const [newPwd2, setNewPwd2] = useState(""); const [pwdError, setPwdError] = useState("");
   
   const [isStaffAdminModalOpen, setIsStaffAdminModalOpen] = useState(false); const [newStaffNameInput, setNewStaffNameInput] = useState(""); const [staffRows, setStaffRows] = useState<any[]>([]);
-  const [isVisitorMainModalOpen, setIsVisitorMainModalOpen] = useState(false); const [visitorMedId, setVisitorMedId] = useState(""); const [visitorLotId, setVisitorLotId] = useState(""); const [visitorAmount, setVisitorAmount] = useState(""); const [visitorName, setVisitorName] = useState(""); const [visitorSubmitting, setVisitorSubmitting] = useState(false);
+  
+  // Visitor Note Main states
+  const [isVisitorMainModalOpen, setIsVisitorMainModalOpen] = useState(false); 
+  const [visitorSearchTerm, setVisitorSearchTerm] = useState("");
+  const [visitorMedId, setVisitorMedId] = useState(""); 
+  const [visitorLotId, setVisitorLotId] = useState(""); 
+  const [visitorInputMode, setVisitorInputMode] = useState<'base' | 'pack'>('base');
+  const [visitorAmount, setVisitorAmount] = useState(""); 
+  const [visitorPackCount, setVisitorPackCount] = useState("");
+  const [visitorName, setVisitorName] = useState(""); 
+  const [visitorSubmitting, setVisitorSubmitting] = useState(false);
 
   const [visitorNotes, setVisitorNotes] = useState<any[]>([]);
 
@@ -102,6 +112,18 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     } catch (e: any) { alert("ไม่สำเร็จ: " + e.message); }
   };
 
+  const handleAdminDeleteStaff = async (staffId: string, staffName: string) => {
+    if (staffName === "Admin") return alert("ไม่สามารถลบบัญชี Admin หลักได้");
+    if (!confirm(`ยืนยันการลบผู้ใช้ "${staffName}" ออกจากระบบ?`)) return;
+    try {
+      const { error } = await supabase.from("staff_accounts").delete().eq("id", staffId);
+      if (error) throw error;
+      alert(`ลบผู้ใช้ ${staffName} สำเร็จ!`);
+      fetchStaffRows();
+      refreshStaffList();
+    } catch (e: any) { alert("ลบไม่สำเร็จ: " + e.message); }
+  };
+
   const handleAdminAddStaff = async (e: React.FormEvent) => {
     e.preventDefault();
     const name = newStaffNameInput.trim();
@@ -126,21 +148,32 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
 
   const handleVisitorMainSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!visitorMedId || !visitorLotId || !visitorAmount || !visitorName) return alert("กรุณากรอกข้อมูลให้ครบถ้วน");
+    if (!visitorMedId || !visitorLotId || !visitorName) return alert("กรุณากรอกข้อมูลให้ครบถ้วน");
+    
+    let totalItems = 0;
+    const med = medicines.find(m => m.id.toString() === visitorMedId);
+    const lot = (med?.medicine_lots || []).find((l: any) => l.id.toString() === visitorLotId);
+    if (!lot) return alert("ไม่พบข้อมูลล็อต");
+
+    if (visitorInputMode === 'base') {
+      totalItems = parseInt(visitorAmount);
+      if (!totalItems || totalItems <= 0) return alert("กรุณาระบุจำนวนให้ถูกต้อง");
+    } else {
+      const packs = parseFloat(visitorPackCount);
+      if (!packs || packs <= 0) return alert("กรุณาระบุจำนวนกล่องให้ถูกต้อง");
+      totalItems = Math.round(packs * lot.pack_size);
+    }
+
     setVisitorSubmitting(true);
     try {
-      const med = medicines.find(m => m.id.toString() === visitorMedId);
-      const lot = (med?.medicine_lots || []).find((l: any) => l.id.toString() === visitorLotId);
-      if (!lot) throw new Error("ไม่พบข้อมูลล็อต");
-      
       await supabase.from("stock_transactions").insert([{
         medicine_id: String(visitorMedId), lot_id: String(visitorLotId), exp_date: lot.exp_date,
-        action: 'out', amount: parseInt(visitorAmount), staff_name: visitorName,
+        action: 'out', amount: totalItems, staff_name: visitorName,
         status: 'visitor_note'
       }]);
       alert("บันทึกโน้ตสำเร็จเรียบร้อย!");
       setIsVisitorMainModalOpen(false);
-      setVisitorMedId(""); setVisitorLotId(""); setVisitorAmount(""); setVisitorName("");
+      setVisitorMedId(""); setVisitorLotId(""); setVisitorAmount(""); setVisitorPackCount(""); setVisitorName(""); setVisitorSearchTerm("");
       fetchVisitorNotes();
     } catch (error: any) { alert("บันทึกไม่สำเร็จ: " + error.message); }
     finally { setVisitorSubmitting(false); }
@@ -377,9 +410,16 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                    {staffRows.map(st => (
                       <div key={st.id} className="flex justify-between items-center bg-slate-50 border border-slate-200 p-3 rounded-2xl">
                          <span className="font-semibold text-sm text-slate-800">{st.name} {st.name === 'Admin' && <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full ml-1 font-bold">Admin</span>}</span>
-                         <button onClick={() => handleAdminResetStaffPwd(st.id, st.name)} className="bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1">
-                            <KeyRound size={12}/> เปลี่ยนรหัสผ่าน
-                         </button>
+                         <div className="flex items-center gap-2">
+                            <button onClick={() => handleAdminResetStaffPwd(st.id, st.name)} className="bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1">
+                               <KeyRound size={12}/> เปลี่ยนรหัสผ่าน
+                            </button>
+                            {st.name !== 'Admin' && (
+                               <button onClick={() => handleAdminDeleteStaff(st.id, st.name)} title="ลบผู้ใช้" className="bg-red-50 border border-red-200 hover:bg-red-500 hover:text-white text-red-600 p-2 rounded-xl transition-all shadow-sm">
+                                  <Trash2 size={14}/>
+                               </button>
+                            )}
+                         </div>
                       </div>
                    ))}
                 </div>
@@ -390,15 +430,18 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         {/* Modal: Visitor Note Main Page */}
         {isVisitorMainModalOpen && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[80]">
-             <div className="bg-white/95 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-md p-6 relative">
-                <button onClick={() => setIsVisitorMainModalOpen(false)} className="absolute top-4 right-4 p-1 hover:bg-slate-100 rounded-xl"><X size={20} className="text-slate-400"/></button>
+             <div className="bg-white/95 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto">
+                <button onClick={() => { setIsVisitorMainModalOpen(false); setVisitorSearchTerm(""); setVisitorMedId(""); setVisitorLotId(""); }} className="absolute top-4 right-4 p-1 hover:bg-slate-100 rounded-xl"><X size={20} className="text-slate-400"/></button>
                 <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><MessageSquareText size={20} className="text-amber-600"/> โน้ตสำหรับผู้มาเยือน</h2>
                 <form onSubmit={handleVisitorMainSubmit} className="space-y-3">
                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">เลือกรายการยา *</label>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">ค้นหาและเลือกรายการยา *</label>
+                      <input type="text" placeholder="พิมพ์ชื่อยาเพื่อค้นหา..." className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-sm outline-none mb-2 shadow-sm" value={visitorSearchTerm} onChange={(e) => setVisitorSearchTerm(e.target.value)} />
                       <select required className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-medium outline-none shadow-sm" value={visitorMedId} onChange={(e) => { setVisitorMedId(e.target.value); setVisitorLotId(""); }}>
-                         <option value="">-- เลือกยา --</option>
-                         {medicines.map(m => <option key={m.id} value={m.id}>{m.name} (ตู้: {getCategoryName(m.cabinet_category)})</option>)}
+                         <option value="">-- เลือกยาจากผลค้นหา --</option>
+                         {medicines
+                           .filter(m => m.name.toLowerCase().includes(visitorSearchTerm.toLowerCase()) || (m.hosxp_icode || "").toLowerCase().includes(visitorSearchTerm.toLowerCase()))
+                           .map(m => <option key={m.id} value={m.id}>{m.name} (ตู้: {getCategoryName(m.cabinet_category)})</option>)}
                       </select>
                    </div>
                    {visitorMedId && (
@@ -413,15 +456,20 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                          </select>
                       </div>
                    )}
-                   <div className="grid grid-cols-2 gap-3">
-                      <div>
-                         <label className="block text-xs font-bold text-slate-600 mb-1">จำนวนที่นำออก *</label>
-                         <input type="number" required min="1" placeholder="จำนวน" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-bold outline-none shadow-sm" value={visitorAmount} onChange={(e) => setVisitorAmount(e.target.value)} />
+                   <div>
+                      <div className="flex bg-slate-100/80 p-1 rounded-xl mb-2 shadow-inner">
+                        <button type="button" className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${visitorInputMode === 'base' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`} onClick={() => setVisitorInputMode('base')}>กรอกเป็นเม็ด/ชิ้น</button>
+                        <button type="button" className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${visitorInputMode === 'pack' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`} onClick={() => setVisitorInputMode('pack')}>กรอกเป็นกล่อง/แพ็ค</button>
                       </div>
-                      <div>
-                         <label className="block text-xs font-bold text-slate-600 mb-1">ชื่อผู้บันทึก *</label>
-                         <input type="text" required placeholder="ชื่อผู้เบิก" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-medium outline-none shadow-sm" value={visitorName} onChange={(e) => setVisitorName(e.target.value)} />
-                      </div>
+                      {visitorInputMode === 'base' ? (
+                        <input type="number" required min="1" placeholder="จำนวน (ชิ้นย่อย)" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-bold outline-none shadow-sm" value={visitorAmount} onChange={(e) => setVisitorAmount(e.target.value)} />
+                      ) : (
+                        <input type="number" step="0.1" required min="0.1" placeholder="จำนวน (กล่อง/แพ็ค)" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-bold outline-none shadow-sm" value={visitorPackCount} onChange={(e) => setVisitorPackCount(e.target.value)} />
+                      )}
+                   </div>
+                   <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">ชื่อผู้บันทึก *</label>
+                      <input type="text" required placeholder="ชื่อผู้เบิก" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-medium outline-none shadow-sm" value={visitorName} onChange={(e) => setVisitorName(e.target.value)} />
                    </div>
                    <button type="submit" disabled={visitorSubmitting} className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold p-3.5 rounded-xl shadow-md transition-all mt-2 disabled:opacity-60">{visitorSubmitting ? 'กำลังบันทึก...' : 'บันทึกโน้ตผู้มาเยือน'}</button>
                 </form>
@@ -743,7 +791,6 @@ export default function StockCardPage() {
       const { data } = await supabase.from("staff_accounts").select("name").order("name");
       if (data && data.length > 0) {
         const names = data.map(d => d.name);
-        // Ensure Admin and default list are included
         const combined = Array.from(new Set([...DEFAULT_STAFF_LIST, ...names]));
         setStaffList(combined);
       }
