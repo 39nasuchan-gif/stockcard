@@ -8,16 +8,16 @@ import {
   User, Lock, ArrowLeft, Clock, MessageSquareText
 } from "lucide-react";
 
-const STAFF_LIST = ["ศรีไพร", "จุฬารัตน์", "วิภาวรรณ", "ณัฏฐริกา", "ณัฐพร", "นทีทิพย์", "วรรณอาษา", "จุฑาภรณ์", "วีรากานต์", "มีนนรี"];
+const DEFAULT_STAFF_LIST = ["ศรีไพร", "จุฬารัตน์", "วิภาวรรณ", "ณัฏฐริกา", "ณัฐพร", "นทีทิพย์", "วรรณอาษา", "จุฑาภรณ์", "วีรากานต์", "มีนนรี", "Admin"];
 const SESSION_KEY = "stockcard_session_v1";
 
 type Session = { id: string; name: string; isCentral: boolean };
 async function sha256Hex(t: string) { const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)); return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join(""); }
 const formatBoxString = (totalItems: number, packSize: number, unitName: string) => { if (packSize <= 1 || totalItems === 0) return `${totalItems} ${unitName}`; const packs = Math.floor(totalItems / packSize); const rem = totalItems % packSize; if (packs === 0) return `${rem} ${unitName}`; return `${packs} กล่อง × ${packSize} ${unitName} ${rem > 0 ? `(เศษ ${rem} ${unitName})` : ''}`; }
 
-function LoginModal({ onLogin, onClose }: { onLogin: (s: Session) => void, onClose: () => void }) {
+function LoginModal({ onLogin, onClose, staffList }: { onLogin: (s: Session) => void, onClose: () => void, staffList: string[] }) {
   const [selectedName, setSelectedName] = useState<string | null>(null); const [staffRow, setStaffRow] = useState<any>(null); const [loadingRow, setLoadingRow] = useState(false); const [mode, setMode] = useState<"password" | "setPassword">("password"); const [password, setPassword] = useState(""); const [password2, setPassword2] = useState(""); const [error, setError] = useState(""); const [busy, setBusy] = useState(false); const closeModal = () => { setSelectedName(null); setStaffRow(null); setPassword(""); setPassword2(""); setError(""); };
-  const openStaffLogin = async (name: string) => { setSelectedName(name); setError(""); setPassword(""); setPassword2(""); setLoadingRow(true); try { let { data, error } = await supabase.from("staff_accounts").select("*").eq("name", name).maybeSingle(); if (error) throw error; if (!data) { const { data: inserted } = await supabase.from("staff_accounts").insert([{ name, is_central: false }]).select().single(); data = inserted; } setStaffRow(data); setMode(data.password_hash ? "password" : "setPassword"); } catch (e: any) { setError("โหลดข้อมูลไม่สำเร็จ"); } finally { setLoadingRow(false); } };
+  const openStaffLogin = async (name: string) => { setSelectedName(name); setError(""); setPassword(""); setPassword2(""); setLoadingRow(true); try { let { data, error } = await supabase.from("staff_accounts").select("*").eq("name", name).maybeSingle(); if (error) throw error; if (!data) { const defaultHash = name === "Admin" ? await sha256Hex("1115") : ""; const { data: inserted } = await supabase.from("staff_accounts").insert([{ name, password_hash: defaultHash, is_central: false }]).select().single(); data = inserted; } setStaffRow(data); setMode(data.password_hash ? "password" : "setPassword"); } catch (e: any) { setError("โหลดข้อมูลไม่สำเร็จ"); } finally { setLoadingRow(false); } };
   const handleSubmitPassword = async (e: React.FormEvent) => { e.preventDefault(); if (!staffRow) return; setError(""); if (mode === "setPassword") { if (password.length < 4) return setError("อย่างน้อย 4 ตัวอักษร"); if (password !== password2) return setError("รหัสไม่ตรงกัน"); } setBusy(true); try { const hash = await sha256Hex(password); if (mode === "setPassword") { const { data } = await supabase.from("staff_accounts").update({ password_hash: hash }).eq("id", staffRow.id).select().single(); const session: Session = { id: data.id, name: data.name, isCentral: false }; localStorage.setItem(SESSION_KEY, JSON.stringify(session)); onLogin(session); } else { if (hash !== staffRow.password_hash) { setBusy(false); return setError("รหัสผ่านไม่ถูกต้อง"); } const session: Session = { id: staffRow.id, name: staffRow.name, isCentral: false }; localStorage.setItem(SESSION_KEY, JSON.stringify(session)); onLogin(session); } } catch (e: any) { setError("เกิดข้อผิดพลาด"); } finally { setBusy(false); } };
 
   return (
@@ -25,8 +25,8 @@ function LoginModal({ onLogin, onClose }: { onLogin: (s: Session) => void, onClo
       <div className="w-full max-w-sm relative">
         <button onClick={onClose} className="absolute -top-12 right-0 text-white hover:text-slate-200"><X size={32}/></button>
         <div className="text-center mb-6"><h1 className="text-2xl font-bold text-white tracking-tight">เข้าสู่ระบบเพื่อดำเนินการ</h1></div>
-        <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-5 border border-white/80">
-          <div className="grid grid-cols-2 gap-3">{STAFF_LIST.map((name) => (<button key={name} onClick={() => openStaffLogin(name)} className="flex items-center gap-2 justify-center bg-slate-50 border border-slate-200 rounded-2xl p-3 font-medium text-slate-700 hover:bg-slate-100 shadow-sm transition-all text-sm"><User size={16} className="text-slate-400" /> {name}</button>))}</div>
+        <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-5 border border-white/80 max-h-[70vh] overflow-y-auto">
+          <div className="grid grid-cols-2 gap-3">{staffList.map((name) => (<button key={name} onClick={() => openStaffLogin(name)} className={`flex items-center gap-2 justify-center border rounded-2xl p-3 font-medium transition-all text-sm ${name === 'Admin' ? 'bg-amber-50 text-amber-800 border-amber-200 font-bold' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 shadow-sm'}`}><User size={16} className={name === 'Admin' ? 'text-amber-600' : 'text-slate-400'} /> {name}</button>))}</div>
         </div>
         {selectedName && (
           <div className="absolute inset-0 z-10 flex items-center justify-center p-2">
@@ -48,6 +48,7 @@ export default function MedicinePage() {
   const [session, setSession] = useState<Session | null>(null); const [checkedSession, setCheckedSession] = useState(false);
   const [med, setMed] = useState<any>(null); const [historyRows, setHistoryRows] = useState<any[]>([]); const [loading, setLoading] = useState(true);
   const [categoriesList, setCategoriesList] = useState<{id: number, name: string}[]>([]);
+  const [staffList, setStaffList] = useState<string[]>(DEFAULT_STAFF_LIST);
 
   // Action/Login Control
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -66,11 +67,26 @@ export default function MedicinePage() {
 
   // Visitor Note states
   const [visitorLotId, setVisitorLotId] = useState("");
+  const [visitorInputMode, setVisitorInputMode] = useState<'base' | 'pack'>('base');
   const [visitorAmount, setVisitorAmount] = useState("");
+  const [visitorPackCount, setVisitorPackCount] = useState("");
   const [visitorName, setVisitorName] = useState("");
   const [visitorSubmitting, setVisitorSubmitting] = useState(false);
 
-  useEffect(() => { try { const raw = localStorage.getItem(SESSION_KEY); if (raw) setSession(JSON.parse(raw)); } catch { } setCheckedSession(true); }, []);
+  const fetchStaffNames = async () => {
+    try {
+      const { data } = await supabase.from("staff_accounts").select("name").order("name");
+      if (data && data.length > 0) {
+        setStaffList(Array.from(new Set([...DEFAULT_STAFF_LIST, ...data.map(d => d.name)])));
+      }
+    } catch (e) {}
+  };
+
+  useEffect(() => { 
+    try { const raw = localStorage.getItem(SESSION_KEY); if (raw) setSession(JSON.parse(raw)); } catch { } 
+    fetchStaffNames();
+    setCheckedSession(true); 
+  }, []);
 
   const fetchData = async () => {
     try {
@@ -97,19 +113,31 @@ export default function MedicinePage() {
 
   const handleVisitorSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!visitorLotId || !visitorAmount || !visitorName) return alert("กรุณากรอกข้อมูลให้ครบถ้วน");
+    if (!visitorLotId || !visitorName) return alert("กรุณากรอกข้อมูลให้ครบถ้วน");
+    
+    let totalItems = 0;
+    const lot = (med.medicine_lots || []).find((l: any) => l.id.toString() === visitorLotId);
+    if (!lot) return alert("ไม่พบข้อมูลล็อต");
+
+    if (visitorInputMode === 'base') {
+      totalItems = parseInt(visitorAmount);
+      if (!totalItems || totalItems <= 0) return alert("กรุณาระบุจำนวนให้ถูกต้อง");
+    } else {
+      const packs = parseFloat(visitorPackCount);
+      if (!packs || packs <= 0) return alert("กรุณาระบุจำนวนกล่องให้ถูกต้อง");
+      totalItems = Math.round(packs * lot.pack_size);
+    }
+
     setVisitorSubmitting(true);
     try {
-      const lot = (med.medicine_lots || []).find((l: any) => l.id.toString() === visitorLotId);
-      if (!lot) throw new Error("ไม่พบข้อมูลล็อต");
-      
       await supabase.from("stock_transactions").insert([{
         medicine_id: String(med.id), lot_id: String(visitorLotId), exp_date: lot.exp_date,
-        action: 'out', amount: parseInt(visitorAmount), staff_name: visitorName,
+        action: 'out', amount: totalItems, staff_name: visitorName,
         status: 'visitor_note'
       }]);
       alert("บันทึกโน้ตสำเร็จ ขอบคุณครับ!");
-      setVisitorLotId(""); setVisitorAmount(""); setVisitorName("");
+      setVisitorLotId(""); setVisitorAmount(""); setVisitorPackCount(""); setVisitorName("");
+      fetchData();
     } catch (error: any) { alert("บันทึกไม่สำเร็จ: " + error.message); }
     finally { setVisitorSubmitting(false); }
   }
@@ -137,18 +165,27 @@ export default function MedicinePage() {
       if (pending) txPayload.expected_date = expectedDate || null;
       
       await supabase.from("stock_transactions").insert([txPayload]);
-      
-      const { data: freshMed } = await supabase.from("medicines").select(`*, medicine_lots (*)`).eq("id", id).single();
-      if (freshMed) setMed(freshMed);
-      const { data: txs } = await supabase.from("stock_transactions").select("*").eq("medicine_id", id).order("created_at", { ascending: false });
-      if (txs) setHistoryRows(txs);
-      
+      await fetchData();
       setIsStockModalOpen(false);
     } catch (error: any) { alert("อัปเดตสต็อกไม่สำเร็จ: " + error.message); } finally { setIsSubmitting(false); }
   };
 
   const openStockModal = (action: 'in' | 'out') => { setStockAction(action); setInputMode('base'); setInputAmount(""); setInputPackCount(""); setStockExpDate(""); setSelectedLotId(""); setIsPendingStock(false); setExpectedDate(""); setStockNote(""); if (action === 'in') { if (med.medicine_lots && med.medicine_lots.length > 0) { setStockInMode('existing'); const firstLot = med.medicine_lots[0]; setSelectedLotId(firstLot.id.toString()); setStockPackSize(firstLot.pack_size.toString()); setStockUnitName(firstLot.unit_name); } else { setStockInMode('new'); setStockPackSize("100"); setStockUnitName("'s"); } } else { if (med.medicine_lots && med.medicine_lots.length > 0) { const firstLot = med.medicine_lots[0]; setStockPackSize(firstLot.pack_size.toString()); setStockUnitName(firstLot.unit_name); } else { setStockPackSize("100"); setStockUnitName("'s"); } } setIsStockModalOpen(true); };
-  const handleApprovePending = async (tx: any) => { if (!confirm("ยืนยันการนำรายการรับล่วงหน้านี้ เข้าสต็อกจริงใช่หรือไม่?")) return; try { const lot = (med.medicine_lots || []).find((l: any) => l.id.toString() === tx.lot_id?.toString()); if (lot) { const { error: lotErr } = await supabase.from("medicine_lots").update({ current_stock: lot.current_stock + tx.amount }).eq("id", lot.id); if (lotErr) throw lotErr; } const appendedNote = tx.edit_note ? `${tx.edit_note} | อนุมัติโดย ${session?.name}` : `อนุมัติโดย ${session?.name}`; await supabase.from("stock_transactions").update({ status: 'completed', edit_note: appendedNote }).eq("id", tx.id); await fetchData(); alert("นำยอดเข้าสต็อกสำเร็จ"); } catch (e: any) { alert("เกิดข้อผิดพลาด: " + e.message); } }
+  const handleApprovePending = async (tx: any, setBtnDone?: (val: boolean) => void) => { 
+    if (!confirm("ยืนยันการนำรายการรับล่วงหน้านี้ เข้าสต็อกจริงใช่หรือไม่?")) return; 
+    try { 
+      const lot = (med.medicine_lots || []).find((l: any) => l.id.toString() === tx.lot_id?.toString()); 
+      if (lot) { 
+        const { error: lotErr } = await supabase.from("medicine_lots").update({ current_stock: lot.current_stock + tx.amount }).eq("id", lot.id); 
+        if (lotErr) throw lotErr; 
+      } 
+      const appendedNote = tx.edit_note ? `${tx.edit_note} | อนุมัติโดย ${session?.name}` : `อนุมัติโดย ${session?.name}`; 
+      await supabase.from("stock_transactions").update({ status: 'completed', edit_note: appendedNote }).eq("id", tx.id); 
+      await fetchData(); 
+      if (setBtnDone) setBtnDone(true);
+      alert("นำยอดเข้าสต็อกสำเร็จ"); 
+    } catch (e: any) { alert("เกิดข้อผิดพลาด: " + e.message); } 
+  };
 
   const formatHistoryDate = (iso: string) => { try { return new Date(iso).toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return iso; } };
   const getCategoryName = (catId: number) => { const c = categoriesList.find(x => String(x.id) === String(catId)); return c ? c.name : catId; }
@@ -160,9 +197,9 @@ export default function MedicinePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#e0eaf5] via-[#f0f4f8] to-[#e8ebf2] flex flex-col font-sans relative">
-      {/* Login Modal Overlay */}
       {showLoginModal && (
         <LoginModal 
+          staffList={staffList}
           onClose={() => { setShowLoginModal(false); setPendingAction(null); }}
           onLogin={(s) => { 
             setSession(s); setShowLoginModal(false); 
@@ -206,18 +243,27 @@ export default function MedicinePage() {
             </div>
           </div>
 
-          {/* ฟอร์มโน้ตผู้มาเยือน (ไม่ต้อง Login ก็เห็นและใช้ได้) */}
+          {/* ฟอร์มโน้ตผู้มาเยือน */}
           <div className="mb-5 bg-amber-50/60 backdrop-blur-sm rounded-2xl p-4 border border-amber-200/50 shadow-sm transition-all">
             <h3 className="text-sm font-bold flex items-center gap-2 mb-3 text-amber-700"><MessageSquareText size={16} /> โน้ตสำหรับผู้มาเยือน (ไม่ได้ตัดสต็อกจริง)</h3>
             <form onSubmit={handleVisitorSubmit} className="space-y-3">
               <select required className="w-full bg-white border border-amber-200/50 rounded-xl p-3 text-sm font-medium outline-none focus:ring-2 focus:ring-amber-400 shadow-sm" value={visitorLotId} onChange={(e) => setVisitorLotId(e.target.value)}>
                  <option value="">-- เลือก EXP ที่หยิบออก --</option>
-                 {activeLots.map((lot: any) => <option key={lot.id} value={lot.id}>EXP: {lot.exp_date} (เหลือรวม {lot.current_stock} หน่วย)</option>)}
+                 {activeLots.map((lot: any) => {
+                    const packs = Math.floor(lot.current_stock / lot.pack_size); const rem = lot.current_stock % lot.pack_size;
+                    return <option key={lot.id} value={lot.id}>EXP: {lot.exp_date} ({packs} กล่อง {rem > 0 ? `เศษ ${rem}` : ''} {lot.unit_name})</option>
+                 })}
               </select>
-              <div className="flex gap-2">
-                 <input type="number" required min="1" placeholder="นำออก (หน่วย)" className="w-[45%] bg-white border border-amber-200/50 rounded-xl p-3 text-sm font-bold outline-none focus:ring-2 focus:ring-amber-400 shadow-sm" value={visitorAmount} onChange={(e) => setVisitorAmount(e.target.value)} />
-                 <input type="text" required placeholder="ชื่อผู้เบิก (ชื่อผู้บันทึก)" className="w-[55%] bg-white border border-amber-200/50 rounded-xl p-3 text-sm font-medium outline-none focus:ring-2 focus:ring-amber-400 shadow-sm" value={visitorName} onChange={(e) => setVisitorName(e.target.value)} />
+              <div className="flex bg-slate-100/80 p-1 rounded-xl shadow-inner">
+                <button type="button" className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${visitorInputMode === 'base' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`} onClick={() => setVisitorInputMode('base')}>กรอกเป็นเม็ด/ชิ้น</button>
+                <button type="button" className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${visitorInputMode === 'pack' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`} onClick={() => setVisitorInputMode('pack')}>กรอกเป็นกล่อง/แพ็ค</button>
               </div>
+              {visitorInputMode === 'base' ? (
+                <input type="number" required min="1" placeholder="จำนวน (ชิ้นย่อย)" className="w-full bg-white border border-amber-200/50 rounded-xl p-3 text-sm font-bold outline-none focus:ring-2 focus:ring-amber-400 shadow-sm" value={visitorAmount} onChange={(e) => setVisitorAmount(e.target.value)} />
+              ) : (
+                <input type="number" step="0.1" required min="0.1" placeholder="จำนวน (กล่อง/แพ็ค)" className="w-full bg-white border border-amber-200/50 rounded-xl p-3 text-sm font-bold outline-none focus:ring-2 focus:ring-amber-400 shadow-sm" value={visitorPackCount} onChange={(e) => setVisitorPackCount(e.target.value)} />
+              )}
+              <input type="text" required placeholder="ชื่อผู้เบิก (ผู้บันทึก)" className="w-full bg-white border border-amber-200/50 rounded-xl p-3 text-sm font-medium outline-none focus:ring-2 focus:ring-amber-400 shadow-sm" value={visitorName} onChange={(e) => setVisitorName(e.target.value)} />
               <button type="submit" disabled={visitorSubmitting} className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold p-3 rounded-xl shadow-md transition-all disabled:opacity-60">{visitorSubmitting ? 'กำลังบันทึก...' : 'บันทึกโน้ตผู้มาเยือน'}</button>
             </form>
           </div>
@@ -232,8 +278,7 @@ export default function MedicinePage() {
           <h3 className="text-sm font-bold flex items-center gap-2 mb-4 text-slate-700 border-b pb-3 border-white/50">ประวัติล่าสุด (เจ้าหน้าที่)</h3>
           <div className="space-y-3">
             {historyRows.filter(r => r.status !== 'visitor_note' && r.status !== 'visitor_acknowledged').length === 0 ? <div className="text-center text-slate-400 py-6 bg-white/50 rounded-2xl border border-dashed border-white font-medium text-sm">ไม่มีประวัติ</div> : (
-              historyRows.map((row: any) => {
-                if (row.status === 'visitor_note' || row.status === 'visitor_acknowledged') return null;
+              historyRows.filter(r => r.status !== 'visitor_note' && r.status !== 'visitor_acknowledged').map((row: any) => {
                 const isInc = row.action === 'in'; const isPending = row.status === 'pending';
                 const lotInfo = (med.medicine_lots || []).find((l: any) => l.id.toString() === row.lot_id?.toString());
                 const pSize = lotInfo?.pack_size || 100; const pUnit = lotInfo?.unit_name || 'หน่วย';
@@ -259,7 +304,9 @@ export default function MedicinePage() {
                       </div>
                       <div className="flex flex-col items-end gap-1.5 shrink-0">
                          <div className="flex items-center gap-1 text-[9px] font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-lg"><User size={10} /> {row.staff_name}</div>
-                         {isPending && <button onClick={() => handleApprovePending(row)} className="text-[9px] font-bold bg-emerald-500 text-white px-2 py-1.5 rounded-lg hover:bg-emerald-600 shadow-sm mt-1">รับของเข้าสต็อก</button>}
+                         {isPending && (
+                           <PendingApproveButtonQR tx={row} onApprove={(setDone) => handleApprovePending(row, setDone)} />
+                         )}
                       </div>
                     </div>
                   </div>
@@ -329,5 +376,18 @@ export default function MedicinePage() {
         </div>
       )}
     </div>
+  );
+}
+
+function PendingApproveButtonQR({ tx, onApprove }: { tx: any, onApprove: (setDone: (val: boolean) => void) => void }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button 
+      onClick={() => onApprove(setDone)} 
+      disabled={done} 
+      className={`text-[9px] font-bold px-2 py-1.5 rounded-lg shadow-sm mt-1 ${done ? 'bg-slate-300 text-slate-700 cursor-not-allowed' : 'bg-emerald-500 text-white hover:bg-emerald-600'}`}
+    >
+      {done ? 'รับของเข้าสต็อกแล้ว' : 'รับของเข้าสต็อก'}
+    </button>
   );
 }

@@ -6,11 +6,11 @@ import {
   Plus, PackagePlus, PackageMinus, X, CalendarDays,
   User, Lock, LogOut, KeyRound, Bell, Check,
   Search, Edit, Trash2, LayoutGrid, History,
-  FileText, Printer, QrCode, ArrowLeft, Upload, ArrowUpDown, Clock
+  FileText, Printer, QrCode, ArrowLeft, Upload, ArrowUpDown, Clock, Users, UserPlus, MessageSquareText
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 
-const STAFF_LIST = ["ศรีไพร", "จุฬารัตน์", "วิภาวรรณ", "ณัฏฐริกา", "ณัฐพร", "นทีทิพย์", "วรรณอาษา", "จุฑาภรณ์", "วีรากานต์", "มีนนรี"];
+const DEFAULT_STAFF_LIST = ["ศรีไพร", "จุฬารัตน์", "วิภาวรรณ", "ณัฏฐริกา", "ณัฐพร", "นทีทิพย์", "วรรณอาษา", "จุฑาภรณ์", "วีรากานต์", "มีนนรี", "Admin"];
 const SESSION_KEY = "stockcard_session_v1";
 
 const CAT_COLORS = [
@@ -29,17 +29,17 @@ type Session = { id: string; name: string; isCentral: boolean };
 async function sha256Hex(t: string) { const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)); return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join(""); }
 const formatBoxString = (totalItems: number, packSize: number, unitName: string) => { if (packSize <= 1 || totalItems === 0) return `${totalItems} ${unitName}`; const packs = Math.floor(totalItems / packSize); const rem = totalItems % packSize; if (packs === 0) return `${rem} ${unitName}`; return `${packs} กล่อง × ${packSize} ${unitName} ${rem > 0 ? `(เศษ ${rem} ${unitName})` : ''}`; }
 
-function LoginScreen({ onLogin }: { onLogin: (s: Session) => void }) {
+function LoginScreen({ onLogin, staffList }: { onLogin: (s: Session) => void, staffList: string[] }) {
   const [selectedName, setSelectedName] = useState<string | null>(null); const [staffRow, setStaffRow] = useState<any>(null); const [loadingRow, setLoadingRow] = useState(false); const [mode, setMode] = useState<"password" | "setPassword">("password"); const [password, setPassword] = useState(""); const [password2, setPassword2] = useState(""); const [error, setError] = useState(""); const [busy, setBusy] = useState(false); const closeModal = () => { setSelectedName(null); setStaffRow(null); setPassword(""); setPassword2(""); setError(""); };
-  const openStaffLogin = async (name: string) => { setSelectedName(name); setError(""); setPassword(""); setPassword2(""); setLoadingRow(true); try { let { data, error } = await supabase.from("staff_accounts").select("*").eq("name", name).maybeSingle(); if (error) throw error; if (!data) { const { data: inserted } = await supabase.from("staff_accounts").insert([{ name, is_central: false }]).select().single(); data = inserted; } setStaffRow(data); setMode(data.password_hash ? "password" : "setPassword"); } catch (e: any) { setError("โหลดข้อมูลไม่สำเร็จ"); } finally { setLoadingRow(false); } };
+  const openStaffLogin = async (name: string) => { setSelectedName(name); setError(""); setPassword(""); setPassword2(""); setLoadingRow(true); try { let { data, error } = await supabase.from("staff_accounts").select("*").eq("name", name).maybeSingle(); if (error) throw error; if (!data) { const defaultHash = name === "Admin" ? await sha256Hex("1115") : ""; const { data: inserted } = await supabase.from("staff_accounts").insert([{ name, password_hash: defaultHash, is_central: false }]).select().single(); data = inserted; } setStaffRow(data); setMode(data.password_hash ? "password" : "setPassword"); } catch (e: any) { setError("โหลดข้อมูลไม่สำเร็จ"); } finally { setLoadingRow(false); } };
   const handleSubmitPassword = async (e: React.FormEvent) => { e.preventDefault(); if (!staffRow) return; setError(""); if (mode === "setPassword") { if (password.length < 4) return setError("อย่างน้อย 4 ตัวอักษร"); if (password !== password2) return setError("รหัสไม่ตรงกัน"); } setBusy(true); try { const hash = await sha256Hex(password); if (mode === "setPassword") { const { data } = await supabase.from("staff_accounts").update({ password_hash: hash }).eq("id", staffRow.id).select().single(); const session: Session = { id: data.id, name: data.name, isCentral: false }; localStorage.setItem(SESSION_KEY, JSON.stringify(session)); onLogin(session); } else { if (hash !== staffRow.password_hash) { setBusy(false); return setError("รหัสผ่านไม่ถูกต้อง"); } const session: Session = { id: staffRow.id, name: staffRow.name, isCentral: false }; localStorage.setItem(SESSION_KEY, JSON.stringify(session)); onLogin(session); } } catch (e: any) { setError("เกิดข้อผิดพลาด"); } finally { setBusy(false); } };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#eef2f5] to-[#f8fafc] flex items-center justify-center p-4"><div className="w-full max-w-2xl"><div className="text-center mb-8"><h1 className="text-3xl font-bold text-slate-800 tracking-tight">ระบบคลังยา</h1><p className="text-slate-500 mt-2 text-sm">กรุณาเลือกชื่อเจ้าหน้าที่เพื่อเข้าสู่ระบบ</p></div><div className="bg-white/60 backdrop-blur-xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/80 p-5 mb-5"><div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{STAFF_LIST.map((name) => (<button key={name} onClick={() => openStaffLogin(name)} className="flex items-center gap-2 justify-center bg-white/50 border border-white/60 rounded-2xl p-3.5 font-medium text-slate-700 hover:bg-white/90 hover:shadow-sm transition-all"><User size={18} className="text-slate-400" /> {name}</button>))}</div></div>{selectedName && (<div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm flex items-center justify-center p-4 z-50"><div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden border border-white"><div className="flex justify-between items-center p-5 border-b border-white/50 bg-white/40"><h2 className="text-lg font-bold flex items-center gap-2 text-slate-800"><Lock size={18} /> {selectedName}</h2><button onClick={closeModal}><X size={22} className="text-slate-400 hover:text-slate-600" /></button></div>{loadingRow ? (<div className="p-8 text-center text-slate-500">กำลังโหลด...</div>) : (<form onSubmit={handleSubmitPassword} className="p-6 space-y-5">{mode === "setPassword" && (<p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">การเข้าสู่ระบบครั้งแรก กรุณาตั้งรหัสผ่านใหม่เพื่อความปลอดภัย</p>)}<div><label className="block text-sm font-medium mb-1.5 text-slate-700">{mode === "setPassword" ? "ตั้งรหัสผ่านใหม่" : "รหัสผ่าน"}</label><input type="password" required autoFocus className="w-full bg-white/50 border border-white rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white transition-all" value={password} onChange={(e) => setPassword(e.target.value)} /></div>{mode === "setPassword" && (<div><label className="block text-sm font-medium mb-1.5 text-slate-700">ยืนยันรหัสผ่าน</label><input type="password" required className="w-full bg-white/50 border border-white rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white transition-all" value={password2} onChange={(e) => setPassword2(e.target.value)} /></div>)}{error && <p className="text-red-500 text-sm">{error}</p>}<button type="submit" disabled={busy} className="w-full bg-blue-500 hover:bg-blue-600 text-white p-3.5 rounded-xl font-medium disabled:opacity-60 shadow-lg shadow-blue-200 transition-all">{busy ? "กำลังตรวจสอบ..." : mode === "setPassword" ? "ตั้งรหัสผ่านและเข้าสู่ระบบ" : "เข้าสู่ระบบ"}</button></form>)}</div></div>)}</div></div>
+    <div className="min-h-screen bg-gradient-to-br from-[#eef2f5] to-[#f8fafc] flex items-center justify-center p-4"><div className="w-full max-w-2xl"><div className="text-center mb-8"><h1 className="text-3xl font-bold text-slate-800 tracking-tight">ระบบคลังยา</h1><p className="text-slate-500 mt-2 text-sm">กรุณาเลือกชื่อเจ้าหน้าที่เพื่อเข้าสู่ระบบ</p></div><div className="bg-white/60 backdrop-blur-xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/80 p-5 mb-5"><div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{staffList.map((name) => (<button key={name} onClick={() => openStaffLogin(name)} className={`flex items-center gap-2 justify-center border rounded-2xl p-3.5 font-medium transition-all ${name === 'Admin' ? 'bg-amber-50/80 text-amber-800 border-amber-200 hover:bg-amber-100 font-bold' : 'bg-white/50 border-white/60 text-slate-700 hover:bg-white/90 hover:shadow-sm'}`}><User size={18} className={name === 'Admin' ? 'text-amber-600' : 'text-slate-400'} /> {name}</button>))}</div></div>{selectedName && (<div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm flex items-center justify-center p-4 z-50"><div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden border border-white"><div className="flex justify-between items-center p-5 border-b border-white/50 bg-white/40"><h2 className="text-lg font-bold flex items-center gap-2 text-slate-800"><Lock size={18} /> {selectedName}</h2><button onClick={closeModal}><X size={22} className="text-slate-400 hover:text-slate-600" /></button></div>{loadingRow ? (<div className="p-8 text-center text-slate-500">กำลังโหลด...</div>) : (<form onSubmit={handleSubmitPassword} className="p-6 space-y-5">{mode === "setPassword" && (<p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">การเข้าสู่ระบบครั้งแรก กรุณาตั้งรหัสผ่านใหม่เพื่อความปลอดภัย</p>)}<div><label className="block text-sm font-medium mb-1.5 text-slate-700">{mode === "setPassword" ? "ตั้งรหัสผ่านใหม่" : "รหัสผ่าน"}</label><input type="password" required autoFocus className="w-full bg-white/50 border border-white rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white transition-all" value={password} onChange={(e) => setPassword(e.target.value)} /></div>{mode === "setPassword" && (<div><label className="block text-sm font-medium mb-1.5 text-slate-700">ยืนยันรหัสผ่าน</label><input type="password" required className="w-full bg-white/50 border border-white rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white transition-all" value={password2} onChange={(e) => setPassword2(e.target.value)} /></div>)}{error && <p className="text-red-500 text-sm">{error}</p>}<button type="submit" disabled={busy} className="w-full bg-blue-500 hover:bg-blue-600 text-white p-3.5 rounded-xl font-medium disabled:opacity-60 shadow-lg shadow-blue-200 transition-all">{busy ? "กำลังตรวจสอบ..." : mode === "setPassword" ? "ตั้งรหัสผ่านและเข้าสู่ระบบ" : "เข้าสู่ระบบ"}</button></form>)}</div></div>)}</div></div>
   );
 }
 
-function StockCardApp({ session, onLogout }: { session: Session; onLogout: () => void }) {
+function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { session: Session; onLogout: () => void; staffList: string[]; refreshStaffList: () => void }) {
   const [medicines, setMedicines] = useState<any[]>([]); const [loading, setLoading] = useState(true); const [sortOrder, setSortOrder] = useState<'recent' | 'alpha'>('alpha');
   const [isMedModalOpen, setIsMedModalOpen] = useState(false); const [isEditing, setIsEditing] = useState(false); const [medFormData, setMedFormData] = useState({ id: "", name: "", note: "", hosxp_icode: "", cabinet_category: "1", min_stock: "" });
   
@@ -49,22 +49,30 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   const [categoriesList, setCategoriesList] = useState<{id: number, name: string}[]>([]); const [selectedCategory, setSelectedCategory] = useState<number | "all">("all"); const [searchTerm, setSearchTerm] = useState(""); const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null); const [categoryNameInput, setCategoryNameInput] = useState("");
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false); const [historyMed, setHistoryMed] = useState<any>(null); const [historyRows, setHistoryRows] = useState<any[]>([]); const [historyLoading, setHistoryLoading] = useState(false); const [allTransactions, setAllTransactions] = useState<any[]>([]);
   const [globalPeriodMode, setGlobalPeriodMode] = useState<'1m' | '2m' | '3m' | 'custom'>('1m'); const [globalStartDate, setGlobalStartDate] = useState(""); const [globalEndDate, setGlobalEndDate] = useState("");
+  
   const [isReportModalOpen, setIsReportModalOpen] = useState(false); const [reportTargetCategory, setReportTargetCategory] = useState<number | "all">("all"); const [reportTargetId, setReportTargetId] = useState("all"); const [isGeneratingReport, setIsGeneratingReport] = useState(false); const [showPrintView, setShowPrintView] = useState(false); const [printData, setPrintData] = useState<any>({});
+  
   const [isQRModalOpen, setIsQRModalOpen] = useState(false); const [qrTargetCategory, setQrTargetCategory] = useState<number | "all">("all"); const [qrTargetId, setQrTargetId] = useState("all"); const [showQRPrintView, setShowQRPrintView] = useState(false); const [qrPrintData, setQrPrintData] = useState<any[]>([]);
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false); 
+  
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false); const [importText, setImportText] = useState(""); const [importing, setImporting] = useState(false);
   const [isChangePwdModalOpen, setIsChangePwdModalOpen] = useState(false); const [oldPwd, setOldPwd] = useState(""); const [newPwd, setNewPwd] = useState(""); const [newPwd2, setNewPwd2] = useState(""); const [pwdError, setPwdError] = useState("");
+  
+  const [isStaffAdminModalOpen, setIsStaffAdminModalOpen] = useState(false); const [newStaffNameInput, setNewStaffNameInput] = useState(""); const [staffRows, setStaffRows] = useState<any[]>([]);
+  const [isVisitorMainModalOpen, setIsVisitorMainModalOpen] = useState(false); const [visitorMedId, setVisitorMedId] = useState(""); const [visitorLotId, setVisitorLotId] = useState(""); const [visitorAmount, setVisitorAmount] = useState(""); const [visitorName, setVisitorName] = useState(""); const [visitorSubmitting, setVisitorSubmitting] = useState(false);
+
   const [visitorNotes, setVisitorNotes] = useState<any[]>([]);
 
   const fetchMedicines = async () => { try { const { data, error } = await supabase.from("medicines").select(`*, medicine_lots (*)`).order("id", { ascending: false }); if (error) throw error; if (data) setMedicines(data); const { data: txData } = await supabase.from("stock_transactions").select("*").in("action", ["out","in"]); if (txData) setAllTransactions(txData); } catch (error) { console.error(error); } finally { setLoading(false); } };
   const fetchCategories = async () => { try { const { data, error } = await supabase.from("cabinet_categories").select("*").order("id"); if (error) throw error; if (data && data.length > 0) setCategoriesList(data); } catch (error) { console.error(error); } };
   const fetchVisitorNotes = async () => { try { const { data } = await supabase.from("stock_transactions").select("*").eq("status", "visitor_note").order("created_at", { ascending: false }); if (data) setVisitorNotes(data); } catch (error) { console.error(error); } };
+  const fetchStaffRows = async () => { try { const { data } = await supabase.from("staff_accounts").select("*").order("name"); if (data) setStaffRows(data); } catch (e) {} };
 
-  useEffect(() => { fetchMedicines(); fetchCategories(); fetchVisitorNotes(); const savedCat = localStorage.getItem(`saved_cat_${session.id}`); if (savedCat) setSelectedCategory(savedCat === "all" ? "all" : Number(savedCat)); }, []);
+  useEffect(() => { fetchMedicines(); fetchCategories(); fetchVisitorNotes(); fetchStaffRows(); const savedCat = localStorage.getItem(`saved_cat_${session.id}`); if (savedCat) setSelectedCategory(savedCat === "all" ? "all" : Number(savedCat)); }, []);
   useEffect(() => { if (globalPeriodMode !== 'custom') { const end = new Date(); const start = new Date(); if (globalPeriodMode === '1m') start.setMonth(start.getMonth() - 1); if (globalPeriodMode === '2m') start.setMonth(start.getMonth() - 2); if (globalPeriodMode === '3m') start.setMonth(start.getMonth() - 3); setGlobalEndDate(end.toISOString().split('T')[0]); setGlobalStartDate(start.toISOString().split('T')[0]); } }, [globalPeriodMode]);
 
   const handleSelectCategory = (catId: number | "all") => { setSelectedCategory(catId); localStorage.setItem(`saved_cat_${session.id}`, String(catId)); }
   const handleAddCategory = async () => { const newName = prompt("กรุณาระบุชื่อตู้ยาใหม่ (เช่น ตู้ยา 11):"); if (!newName || !newName.trim()) return; try { const { data: existing } = await supabase.from("cabinet_categories").select("id").order("id", { ascending: false }).limit(1); const nextId = (existing && existing.length > 0) ? existing[0].id + 1 : 1; const { error } = await supabase.from("cabinet_categories").insert([{ id: nextId, name: newName.trim() }]); if (error) throw error; fetchCategories(); } catch (error: any) { alert("เพิ่มตู้ยาไม่สำเร็จ: " + error.message); } };
-  const handleRenameCategory = async (e: React.FormEvent) => { e.preventDefault(); if (editingCategoryId === null) return; const trimmed = categoryNameInput.trim(); if (!trimmed) return; try { const { error } = await supabase.from("cabinet_categories").upsert({ id: editingCategoryId, name: trimmed }, { onConflict: "id" }); if (error) throw error; fetchCategories(); setEditingCategoryId(null); setCategoryNameInput(""); } catch (error: any) { alert("บันทึกชื่อหมวดหมู่ไม่สำเร็จ: " + error.message); } };
+  const handleRenameCategory = async (e: React.FormEvent) => { e.preventDefault(); if (editingCategoryId === null) return; const trimmed = categoryNameInput.trim(); if (!trimmed) return; try { const { error } = await supabase.from("cabinet_categories").update({ name: trimmed }).eq("id", editingCategoryId); if (error) throw error; fetchCategories(); setEditingCategoryId(null); setCategoryNameInput(""); alert("เปลี่ยนชื่อตู้ยาสำเร็จ!"); } catch (error: any) { alert("บันทึกชื่อหมวดหมู่ไม่สำเร็จ: " + error.message); } };
   const getCategoryName = (id: string | number) => { const cat = categoriesList?.find(c => String(c.id) === String(id)); return cat ? cat.name : id; };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -82,12 +90,91 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
     } catch (err: any) { setPwdError("เกิดข้อผิดพลาด: " + err.message); } finally { setIsSubmitting(false); }
   }
 
+  const handleAdminResetStaffPwd = async (staffId: string, staffName: string) => {
+    const p = prompt(`ระบุรหัสผ่านใหม่สำหรับ ${staffName}:`);
+    if (!p || p.length < 4) return alert("รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร");
+    try {
+      const hash = await sha256Hex(p);
+      const { error } = await supabase.from("staff_accounts").update({ password_hash: hash }).eq("id", staffId);
+      if (error) throw error;
+      alert(`เปลี่ยนรหัสผ่านของ ${staffName} สำเร็จ!`);
+      fetchStaffRows();
+    } catch (e: any) { alert("ไม่สำเร็จ: " + e.message); }
+  };
+
+  const handleAdminAddStaff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newStaffNameInput.trim();
+    if (!name) return;
+    try {
+      const { error } = await supabase.from("staff_accounts").insert([{ name, password_hash: await sha256Hex("1234"), is_central: false }]);
+      if (error) throw error;
+      alert(`เพิ่มเจ้าหน้าที่ ${name} สำเร็จ! (รหัสผ่านเริ่มต้น: 1234)`);
+      setNewStaffNameInput("");
+      fetchStaffRows();
+      refreshStaffList();
+    } catch (e: any) { alert("เพิ่มไม่สำเร็จ: " + e.message); }
+  };
+
   const handleAcknowledgeNote = async (id: string) => {
     try {
-      await supabase.from("stock_transactions").update({ status: "visitor_acknowledged" }).eq("id", id);
-      fetchVisitorNotes();
-    } catch (e: any) { alert("เกิดข้อผิดพลาด"); }
+      const { error } = await supabase.from("stock_transactions").update({ status: "visitor_acknowledged" }).eq("id", id);
+      if (error) throw error;
+      setVisitorNotes(prev => prev.filter(n => n.id !== id));
+    } catch (e: any) { alert("เกิดข้อผิดพลาด: " + e.message); }
   }
+
+  const handleVisitorMainSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!visitorMedId || !visitorLotId || !visitorAmount || !visitorName) return alert("กรุณากรอกข้อมูลให้ครบถ้วน");
+    setVisitorSubmitting(true);
+    try {
+      const med = medicines.find(m => m.id.toString() === visitorMedId);
+      const lot = (med?.medicine_lots || []).find((l: any) => l.id.toString() === visitorLotId);
+      if (!lot) throw new Error("ไม่พบข้อมูลล็อต");
+      
+      await supabase.from("stock_transactions").insert([{
+        medicine_id: String(visitorMedId), lot_id: String(visitorLotId), exp_date: lot.exp_date,
+        action: 'out', amount: parseInt(visitorAmount), staff_name: visitorName,
+        status: 'visitor_note'
+      }]);
+      alert("บันทึกโน้ตสำเร็จเรียบร้อย!");
+      setIsVisitorMainModalOpen(false);
+      setVisitorMedId(""); setVisitorLotId(""); setVisitorAmount(""); setVisitorName("");
+      fetchVisitorNotes();
+    } catch (error: any) { alert("บันทึกไม่สำเร็จ: " + error.message); }
+    finally { setVisitorSubmitting(false); }
+  };
+
+  // Excel Import Handler
+  const handleImportExcel = async () => {
+    if (!importText.trim()) return alert("กรุณาวางข้อมูล CSV หรือข้อความที่ต้องการนำเข้า");
+    setImporting(true);
+    try {
+      const lines = importText.trim().split("\n");
+      let count = 0;
+      for (let line of lines) {
+        const parts = line.split(",").map(p => p.trim());
+        if (parts.length >= 1 && parts[0]) {
+          const name = parts[0];
+          const hosxp_icode = parts[1] || "";
+          const note = parts[2] || "";
+          const cabinet_category = parts[3] || "1";
+          const min_stock = parseInt(parts[4]) || 0;
+
+          await supabase.from("medicines").insert([{
+            name, hosxp_icode, note, cabinet_category, min_stock, is_available: true
+          }]);
+          count++;
+        }
+      }
+      alert(`นำเข้าสำเร็จ ${count} รายการ!`);
+      setIsImportModalOpen(false);
+      setImportText("");
+      fetchMedicines();
+    } catch (e: any) { alert("นำเข้าไม่สำเร็จ: " + e.message); }
+    finally { setImporting(false); }
+  };
 
   const filteredMedicines = medicines.filter((med) => selectedCategory === "all" || String(med.cabinet_category) === String(selectedCategory)).filter((med) => { const term = searchTerm.trim().toLowerCase(); if (!term) return true; return ((med.name || "").toLowerCase().includes(term) || (med.hosxp_icode || "").toLowerCase().includes(term) || (med.note || "").toLowerCase().includes(term)); }).sort((a, b) => { if (sortOrder === 'alpha') return (a.name || "").localeCompare(b.name || "", "th"); return b.id - a.id; });
 
@@ -134,7 +221,29 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   const openStockModal = (med: any, action: 'in' | 'out') => { setSelectedMed(med); setStockAction(action); setInputMode('base'); setInputAmount(""); setInputPackCount(""); setStockExpDate(""); setSelectedLotId(""); setIsPendingStock(false); setExpectedDate(""); setStockNote(""); if (action === 'in') { if (med.medicine_lots && med.medicine_lots.length > 0) { setStockInMode('existing'); const firstLot = med.medicine_lots[0]; setSelectedLotId(firstLot.id.toString()); setStockPackSize(firstLot.pack_size.toString()); setStockUnitName(firstLot.unit_name); } else { setStockInMode('new'); setStockPackSize("100"); setStockUnitName("'s"); } } else { if (med.medicine_lots && med.medicine_lots.length > 0) { const firstLot = med.medicine_lots[0]; setStockPackSize(firstLot.pack_size.toString()); setStockUnitName(firstLot.unit_name); } else { setStockPackSize("100"); setStockUnitName("'s"); } } setIsStockModalOpen(true); };
   const openHistoryModal = async (med: any) => { setHistoryMed(med); setIsHistoryModalOpen(true); setHistoryLoading(true); try { const { data, error } = await supabase.from("stock_transactions").select("*").eq("medicine_id", String(med.id)).order("created_at", { ascending: false }); if (error) throw error; setHistoryRows(data || []); } catch (error) { setHistoryRows([]); } finally { setHistoryLoading(false); } };
   
-  const handleApprovePending = async (tx: any) => { if (!confirm("ยืนยันการนำรายการรับล่วงหน้านี้ เข้าสต็อกจริงใช่หรือไม่?")) return; try { const lot = (historyMed.medicine_lots || []).find((l: any) => l.id.toString() === tx.lot_id?.toString()); if (lot) { const { error: lotErr } = await supabase.from("medicine_lots").update({ current_stock: lot.current_stock + tx.amount }).eq("id", lot.id); if (lotErr) throw lotErr; } const appendedNote = tx.edit_note ? `${tx.edit_note} | อนุมัติโดย ${session.name}` : `อนุมัติโดย ${session.name}`; await supabase.from("stock_transactions").update({ status: 'completed', edit_note: appendedNote }).eq("id", tx.id); await fetchMedicines(); const { data: freshMed } = await supabase.from("medicines").select(`*, medicine_lots (*)`).eq("id", historyMed.id).single(); if (freshMed) { setHistoryMed(freshMed); const { data: txs } = await supabase.from("stock_transactions").select("*").eq("medicine_id", String(historyMed.id)).order("created_at", { ascending: false }); setHistoryRows(txs || []); } alert("นำยอดเข้าสต็อกสำเร็จ"); } catch (e: any) { alert("เกิดข้อผิดพลาด: " + e.message); } }
+  const handleApprovePending = async (tx: any, setBtnDone?: (val: boolean) => void) => { 
+    if (!confirm("ยืนยันการนำรายการรับล่วงหน้านี้ เข้าสต็อกจริงใช่หรือไม่?")) return; 
+    try { 
+      const lot = (historyMed ? historyMed.medicine_lots : medicines.find(m => m.id.toString() === tx.medicine_id)?.medicine_lots || []).find((l: any) => l.id.toString() === tx.lot_id?.toString()); 
+      if (lot) { 
+        const { error: lotErr } = await supabase.from("medicine_lots").update({ current_stock: lot.current_stock + tx.amount }).eq("id", lot.id); 
+        if (lotErr) throw lotErr; 
+      } 
+      const appendedNote = tx.edit_note ? `${tx.edit_note} | อนุมัติโดย ${session.name}` : `อนุมัติโดย ${session.name}`; 
+      await supabase.from("stock_transactions").update({ status: 'completed', edit_note: appendedNote }).eq("id", tx.id); 
+      await fetchMedicines(); 
+      if (historyMed) {
+        const { data: freshMed } = await supabase.from("medicines").select(`*, medicine_lots (*)`).eq("id", historyMed.id).single(); 
+        if (freshMed) {
+            setHistoryMed(freshMed);
+            const { data: txs } = await supabase.from("stock_transactions").select("*").eq("medicine_id", String(historyMed.id)).order("created_at", { ascending: false });
+            setHistoryRows(txs || []);
+        }
+      }
+      if (setBtnDone) setBtnDone(true);
+      alert("นำยอดเข้าสต็อกสำเร็จ"); 
+    } catch (e: any) { alert("เกิดข้อผิดพลาด: " + e.message); } 
+  };
 
   const formatHistoryDate = (iso: string) => { try { return new Date(iso).toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return iso; } };
   const calculateMedStats = (med: any) => { if (!globalStartDate || !globalEndDate) return { totalUsage: 0, target1Week: 0, target2Weeks: 0, daysDiff: 0 }; const start = new Date(globalStartDate); const end = new Date(globalEndDate); start.setHours(0, 0, 0, 0); end.setHours(23, 59, 59, 999); let daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)); if (daysDiff < 1) daysDiff = 1; const medTx = allTransactions.filter(tx => { const txDate = new Date(tx.created_at); return String(tx.medicine_id) === String(med.id) && txDate >= start && txDate <= end && tx.status === 'completed'; }); const totalUsage = medTx.reduce((sum, tx) => sum + tx.amount, 0); const dailyRate = totalUsage / daysDiff; return { totalUsage, target1Week: Math.ceil(dailyRate * 7 * 1.15), target2Weeks: Math.ceil(dailyRate * 14 * 1.15), daysDiff }; };
@@ -155,10 +264,14 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
             <div className="text-right md:hidden"><div className="text-[10px] font-medium text-slate-700 flex items-center justify-end gap-1 bg-white/80 px-3 py-1.5 rounded-full border border-white shadow-sm"><User size={12} className="text-slate-400" /> {session.name}</div></div>
           </div>
           <div className="flex flex-wrap md:flex-nowrap items-center gap-2.5 w-full xl:w-auto mt-2 xl:mt-0">
-            <button onClick={() => setIsQRModalOpen(true)} className="flex-1 md:flex-none flex justify-center items-center gap-1.5 bg-indigo-50/80 text-indigo-700 border border-indigo-200/50 hover:bg-indigo-100 px-3 py-2.5 md:py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><QrCode size={16} /> <span className="hidden sm:inline">พิมพ์ QR</span></button>
+            <button onClick={() => setIsVisitorMainModalOpen(true)} className="flex-1 md:flex-none flex justify-center items-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2.5 md:py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><MessageSquareText size={16} /> โน้ตผู้มาเยือน</button>
+            <button onClick={() => setIsQRModalOpen(true)} className="flex-1 md:flex-none flex justify-center items-center gap-1.5 bg-indigo-50/80 text-indigo-700 border border-indigo-200/50 hover:bg-indigo-100 px-3 py-2.5 md:py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><QrCode size={16} /> พิมพ์ QR</button>
             <button onClick={() => setIsReportModalOpen(true)} className="flex-1 md:flex-none flex justify-center items-center gap-1.5 bg-blue-50/80 text-blue-700 border border-blue-200/50 hover:bg-blue-100 px-3 py-2.5 md:py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><FileText size={16} /> พิมพ์รายงาน</button>
             <button onClick={() => setIsImportModalOpen(true)} className="flex-1 md:flex-none flex justify-center items-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2.5 md:py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Upload size={16} /> นำเข้า</button>
             <button onClick={openAddMedModal} className="flex-1 md:flex-none flex justify-center items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2.5 md:py-2 rounded-xl font-medium text-xs md:text-sm shadow-md shadow-emerald-200 transition-all"><Plus size={18} /> เพิ่มยา</button>
+            {session.name === "Admin" && (
+              <button onClick={() => setIsStaffAdminModalOpen(true)} title="จัดการเจ้าหน้าที่" className="flex items-center gap-1.5 bg-purple-50/80 text-purple-700 border border-purple-200 hover:bg-purple-100 px-3 py-2.5 md:py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Users size={16}/> จัดการเจ้าหน้าที่</button>
+            )}
             <button onClick={() => setIsChangePwdModalOpen(true)} title="เปลี่ยนรหัสผ่าน" className="p-2.5 bg-white/50 border border-white text-slate-500 rounded-xl hover:bg-blue-50 hover:text-blue-500 shadow-sm transition-all"><KeyRound size={20} /></button>
             <button onClick={onLogout} title="ออกจากระบบ" className="p-2.5 bg-white/50 border border-white text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-500 shadow-sm transition-all"><LogOut size={20} /></button>
           </div>
@@ -229,6 +342,92 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
             </div>
           </div>
         </div>
+
+        {/* Edit Category Name Modal */}
+        {editingCategoryId !== null && (
+          <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[75]">
+             <div className="bg-white/90 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-sm p-6 relative">
+                <button onClick={() => setEditingCategoryId(null)} className="absolute top-4 right-4 p-1 hover:bg-white/60 rounded-xl"><X size={20} className="text-slate-400"/></button>
+                <h2 className="text-lg font-bold text-slate-800 mb-4">แก้ไขชื่อหมวดหมู่ตู้ยา</h2>
+                <form onSubmit={handleRenameCategory} className="space-y-4">
+                   <input type="text" required className="w-full bg-white/50 border border-slate-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 shadow-sm" value={categoryNameInput} onChange={(e) => setCategoryNameInput(e.target.value)} placeholder="ชื่อตู้ยาใหม่" />
+                   <button type="submit" className="w-full bg-blue-500 hover:bg-blue-600 text-white p-3 rounded-xl font-medium shadow-md transition-colors">บันทึกชื่อใหม่</button>
+                </form>
+             </div>
+          </div>
+        )}
+
+        {/* Modal: Admin Staff Management */}
+        {isStaffAdminModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[80]">
+             <div className="bg-white/95 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-lg p-6 relative max-h-[85vh] overflow-y-auto">
+                <button onClick={() => setIsStaffAdminModalOpen(false)} className="absolute top-4 right-4 p-1 hover:bg-slate-100 rounded-xl"><X size={20} className="text-slate-400"/></button>
+                <h2 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2"><Users size={22} className="text-purple-600"/> จัดการรายชื่อเจ้าหน้าที่</h2>
+                
+                <form onSubmit={handleAdminAddStaff} className="mb-6 bg-purple-50/60 p-4 rounded-2xl border border-purple-100 space-y-3">
+                   <h3 className="text-sm font-bold text-purple-800 flex items-center gap-1.5"><UserPlus size={16}/> เพิ่มเจ้าหน้าที่ใหม่</h3>
+                   <div className="flex gap-2">
+                      <input type="text" required placeholder="ชื่อเจ้าหน้าที่" className="flex-1 bg-white border border-purple-200 rounded-xl p-2.5 text-sm outline-none shadow-sm" value={newStaffNameInput} onChange={(e) => setNewStaffNameInput(e.target.value)} />
+                      <button type="submit" className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm">เพิ่ม</button>
+                   </div>
+                </form>
+
+                <div className="space-y-2">
+                   <h3 className="text-sm font-bold text-slate-700 mb-2">รายชื่อเจ้าหน้าที่ทั้งหมดในระบบ</h3>
+                   {staffRows.map(st => (
+                      <div key={st.id} className="flex justify-between items-center bg-slate-50 border border-slate-200 p-3 rounded-2xl">
+                         <span className="font-semibold text-sm text-slate-800">{st.name} {st.name === 'Admin' && <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full ml-1 font-bold">Admin</span>}</span>
+                         <button onClick={() => handleAdminResetStaffPwd(st.id, st.name)} className="bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1">
+                            <KeyRound size={12}/> เปลี่ยนรหัสผ่าน
+                         </button>
+                      </div>
+                   ))}
+                </div>
+             </div>
+          </div>
+        )}
+
+        {/* Modal: Visitor Note Main Page */}
+        {isVisitorMainModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[80]">
+             <div className="bg-white/95 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-md p-6 relative">
+                <button onClick={() => setIsVisitorMainModalOpen(false)} className="absolute top-4 right-4 p-1 hover:bg-slate-100 rounded-xl"><X size={20} className="text-slate-400"/></button>
+                <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><MessageSquareText size={20} className="text-amber-600"/> โน้ตสำหรับผู้มาเยือน</h2>
+                <form onSubmit={handleVisitorMainSubmit} className="space-y-3">
+                   <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">เลือกรายการยา *</label>
+                      <select required className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-medium outline-none shadow-sm" value={visitorMedId} onChange={(e) => { setVisitorMedId(e.target.value); setVisitorLotId(""); }}>
+                         <option value="">-- เลือกยา --</option>
+                         {medicines.map(m => <option key={m.id} value={m.id}>{m.name} (ตู้: {getCategoryName(m.cabinet_category)})</option>)}
+                      </select>
+                   </div>
+                   {visitorMedId && (
+                      <div>
+                         <label className="block text-xs font-bold text-slate-600 mb-1">เลือกล็อต EXP *</label>
+                         <select required className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-medium outline-none shadow-sm" value={visitorLotId} onChange={(e) => setVisitorLotId(e.target.value)}>
+                            <option value="">-- เลือกล็อต EXP --</option>
+                            {(medicines.find(m => m.id.toString() === visitorMedId)?.medicine_lots || []).filter((l: any) => l.current_stock > 0).map((lot: any) => {
+                               const packs = Math.floor(lot.current_stock / lot.pack_size); const rem = lot.current_stock % lot.pack_size;
+                               return <option key={lot.id} value={lot.id}>EXP: {lot.exp_date} (เหลือ: {packs} กล่อง {rem > 0 ? `เศษ ${rem}` : ''} {lot.unit_name})</option>
+                            })}
+                         </select>
+                      </div>
+                   )}
+                   <div className="grid grid-cols-2 gap-3">
+                      <div>
+                         <label className="block text-xs font-bold text-slate-600 mb-1">จำนวนที่นำออก *</label>
+                         <input type="number" required min="1" placeholder="จำนวน" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-bold outline-none shadow-sm" value={visitorAmount} onChange={(e) => setVisitorAmount(e.target.value)} />
+                      </div>
+                      <div>
+                         <label className="block text-xs font-bold text-slate-600 mb-1">ชื่อผู้บันทึก *</label>
+                         <input type="text" required placeholder="ชื่อผู้เบิก" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-medium outline-none shadow-sm" value={visitorName} onChange={(e) => setVisitorName(e.target.value)} />
+                      </div>
+                   </div>
+                   <button type="submit" disabled={visitorSubmitting} className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold p-3.5 rounded-xl shadow-md transition-all mt-2 disabled:opacity-60">{visitorSubmitting ? 'กำลังบันทึก...' : 'บันทึกโน้ตผู้มาเยือน'}</button>
+                </form>
+             </div>
+          </div>
+        )}
 
         {loading ? (<div className="p-10 text-center text-slate-400 bg-white/60 backdrop-blur-xl rounded-3xl shadow-sm border border-white">กำลังโหลดข้อมูล...</div>) : filteredMedicines.length === 0 ? (<div className="p-10 text-center text-slate-400 bg-white/60 backdrop-blur-xl rounded-3xl shadow-sm border border-white">ไม่พบรายการยาที่ตรงกับเงื่อนไข</div>) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5">
@@ -327,8 +526,21 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
             <div className="bg-white/80 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
               <div className="flex justify-between items-center p-5 border-b border-white/50"><h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><QrCode size={20}/> พิมพ์ QR Code</h2><button onClick={() => setIsQRModalOpen(false)}><X size={22} className="text-slate-400 hover:text-slate-600" /></button></div>
-              <div className="p-6 space-y-5">
-                <div><label className="block text-sm font-medium mb-2 text-slate-600">เลือกตู้ยา (Cabinet)</label><select className="w-full bg-white/60 border border-white/80 rounded-xl p-3.5 outline-none focus:ring-2 focus:ring-blue-400 font-medium text-slate-700 shadow-sm" value={qrTargetCategory} onChange={(e) => { setQrTargetCategory(e.target.value === "all" ? "all" : Number(e.target.value)); setQrTargetId("all"); }}><option value="all">-- ทุกตู้ยา --</option>{categoriesList?.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}</select></div>
+              <div className="p-6 space-y-4">
+                <div>
+                   <label className="block text-sm font-medium mb-1.5 text-slate-600">เลือกตู้ยา (Cabinet)</label>
+                   <select className="w-full bg-white/60 border border-white/80 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 font-medium text-slate-700 shadow-sm" value={qrTargetCategory} onChange={(e) => { setQrTargetCategory(e.target.value === "all" ? "all" : Number(e.target.value)); setQrTargetId("all"); }}>
+                      <option value="all">-- ทุกตู้ยา --</option>
+                      {categoriesList?.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                   </select>
+                </div>
+                <div>
+                   <label className="block text-sm font-medium mb-1.5 text-slate-600">เลือกรายการยา</label>
+                   <select className="w-full bg-white/60 border border-white/80 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 font-medium text-slate-700 shadow-sm" value={qrTargetId} onChange={(e) => setQrTargetId(e.target.value)}>
+                      <option value="all">-- พิมพ์ทั้งหมด (ตามตู้ที่เลือก) --</option>
+                      {medicines.filter(m => qrTargetCategory === "all" || String(m.cabinet_category) === String(qrTargetCategory)).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                   </select>
+                </div>
                 <div className="pt-2 flex gap-3"><button onClick={() => setIsQRModalOpen(false)} className="flex-1 bg-white/60 border border-white hover:bg-white/90 p-3.5 rounded-xl font-medium text-slate-600 shadow-sm">ยกเลิก</button><button onClick={handleGenerateQRPrint} className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white p-3.5 rounded-xl font-medium shadow-md transition-colors">สร้าง QR Code</button></div>
               </div>
             </div>
@@ -348,12 +560,14 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
         )}
         {isImportModalOpen && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
-            <div className="bg-white/80 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden p-6 text-center">
-               <div className="flex justify-end mb-2"><button onClick={() => setIsImportModalOpen(false)}><X size={20} className="text-slate-400" /></button></div>
-               <div className="w-16 h-16 bg-amber-100/80 text-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-sm border border-amber-200/50"><Upload size={32}/></div>
-               <h2 className="text-lg font-bold text-slate-800 mb-2">นำเข้าข้อมูลจาก Excel</h2>
-               <p className="text-slate-500 mb-6 text-sm">ฟังก์ชันนำเข้าข้อมูลกำลังอยู่ระหว่างการพัฒนา จะพร้อมใช้งานในเวอร์ชันถัดไปเร็วๆ นี้ครับ</p>
-               <button onClick={() => setIsImportModalOpen(false)} className="w-full bg-slate-100/80 hover:bg-slate-200 text-slate-700 p-3.5 rounded-xl font-medium shadow-sm transition-colors border border-slate-200/50">ปิดหน้าต่าง</button>
+            <div className="bg-white/90 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden p-6">
+               <div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Upload size={20}/> นำเข้าข้อมูลยา</h2><button onClick={() => setIsImportModalOpen(false)}><X size={20} className="text-slate-400" /></button></div>
+               <p className="text-xs text-slate-500 mb-3">รูปแบบข้อมูลแต่ละบรรทัด (คั่นด้วยจุลภาค comma): <br/><code className="bg-slate-100 p-1 rounded text-slate-700">ชื่อยา, รหัสHosXP, หมายเหตุ, รหัสตู้ยา(ตัวเลข), สต็อกขั้นต่ำ</code></p>
+               <textarea rows={6} className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-blue-400 mb-4 shadow-sm font-mono" placeholder="พาราสเซทตามอล, P01, ยาแก้ปวด, 1, 10&#10;อม็อกซี่ซิลลิน, A02, ยาปฏิชีวนะ, 1, 5" value={importText} onChange={(e) => setImportText(e.target.value)} />
+               <div className="flex gap-3">
+                  <button onClick={() => setIsImportModalOpen(false)} className="flex-1 bg-slate-100 text-slate-700 p-3.5 rounded-xl font-medium shadow-sm">ยกเลิก</button>
+                  <button onClick={handleImportExcel} disabled={importing} className="flex-1 bg-amber-500 hover:bg-amber-600 text-white p-3.5 rounded-xl font-medium shadow-md transition-colors disabled:opacity-60">{importing ? "กำลังนำเข้า..." : "ยืนยันการนำเข้า"}</button>
+               </div>
             </div>
           </div>
         )}
@@ -461,9 +675,8 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
               <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-slate-100">
                 <h3 className="text-sm font-bold flex items-center gap-2 mb-5 text-slate-700 border-b pb-4 border-slate-100"><History size={20} /> ประวัติการทำรายการล่าสุด</h3>
                 <div className="space-y-3.5">
-                  {historyLoading ? <div className="text-center text-slate-500 py-10 font-medium">กำลังโหลดข้อมูล...</div> : historyRows.length === 0 ? <div className="text-center text-slate-400 py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200 font-medium">ยังไม่มีประวัติการรับเข้า/ตัดจ่าย</div> : (
-                    historyRows.map((row: any) => {
-                      if (row.status === 'visitor_note' || row.status === 'visitor_acknowledged') return null; // ไม่โชว์โน้ตผู้มาเยือนในประวัติจริง
+                  {historyLoading ? <div className="text-center text-slate-500 py-10 font-medium">กำลังโหลดข้อมูล...</div> : historyRows.filter(r => r.status !== 'visitor_note' && r.status !== 'visitor_acknowledged').length === 0 ? <div className="text-center text-slate-400 py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200 font-medium">ยังไม่มีประวัติการรับเข้า/ตัดจ่าย</div> : (
+                    historyRows.filter(r => r.status !== 'visitor_note' && r.status !== 'visitor_acknowledged').map((row: any) => {
                       const isInc = row.action === 'in'; const isPending = row.status === 'pending';
                       const lotInfo = (historyMed.medicine_lots || []).find((l: any) => l.id.toString() === row.lot_id?.toString());
                       const pSize = lotInfo?.pack_size || 100; const pUnit = lotInfo?.unit_name || 'หน่วย';
@@ -489,7 +702,9 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
                             </div>
                             <div className="flex flex-col items-end gap-2 shrink-0">
                                <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-sm"><User size={12} /> {row.staff_name}</div>
-                               {isPending && <button onClick={() => handleApprovePending(row)} className="text-[10px] md:text-xs font-bold bg-emerald-500 text-white px-3 py-2 rounded-lg hover:bg-emerald-600 shadow-sm transition-colors mt-1">รับของเข้าสต็อก</button>}
+                               {isPending && (
+                                 <PendingApproveButton tx={row} onApprove={(setDone) => handleApprovePending(row, setDone)} />
+                               )}
                             </div>
                           </div>
                         </div>
@@ -506,11 +721,43 @@ function StockCardApp({ session, onLogout }: { session: Session; onLogout: () =>
   );
 }
 
+function PendingApproveButton({ tx, onApprove }: { tx: any, onApprove: (setDone: (val: boolean) => void) => void }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button 
+      onClick={() => onApprove(setDone)} 
+      disabled={done} 
+      className={`text-[10px] md:text-xs font-bold px-3 py-2 rounded-lg shadow-sm transition-colors mt-1 ${done ? 'bg-slate-300 text-slate-700 cursor-not-allowed' : 'bg-emerald-500 text-white hover:bg-emerald-600'}`}
+    >
+      {done ? 'รับของเข้าสต็อกแล้ว' : 'รับของเข้าสต็อก'}
+    </button>
+  );
+}
+
 export default function StockCardPage() {
   const [session, setSession] = useState<Session | null>(null); const [checkedSession, setCheckedSession] = useState(false);
-  useEffect(() => { try { const raw = localStorage.getItem(SESSION_KEY); if (raw) setSession(JSON.parse(raw)); } catch { } setCheckedSession(true); }, []);
+  const [staffList, setStaffList] = useState<string[]>(DEFAULT_STAFF_LIST);
+
+  const fetchStaffNames = async () => {
+    try {
+      const { data } = await supabase.from("staff_accounts").select("name").order("name");
+      if (data && data.length > 0) {
+        const names = data.map(d => d.name);
+        // Ensure Admin and default list are included
+        const combined = Array.from(new Set([...DEFAULT_STAFF_LIST, ...names]));
+        setStaffList(combined);
+      }
+    } catch (e) {}
+  };
+
+  useEffect(() => { 
+    try { const raw = localStorage.getItem(SESSION_KEY); if (raw) setSession(JSON.parse(raw)); } catch { } 
+    fetchStaffNames();
+    setCheckedSession(true); 
+  }, []);
+
   const handleLogout = () => { localStorage.removeItem(SESSION_KEY); setSession(null); };
   if (!checkedSession) return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-400">กำลังโหลด...</div>;
-  if (!session) return <LoginScreen onLogin={setSession} />;
-  return <StockCardApp session={session} onLogout={handleLogout} />;
+  if (!session) return <LoginScreen staffList={staffList} onLogin={setSession} />;
+  return <StockCardApp session={session} onLogout={handleLogout} staffList={staffList} refreshStaffList={fetchStaffNames} />;
 }
