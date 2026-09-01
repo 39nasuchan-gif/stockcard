@@ -74,7 +74,12 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
 
   const fetchMedicines = async () => { try { const { data, error } = await supabase.from("medicines").select(`*, medicine_lots (*)`).order("id", { ascending: false }); if (error) throw error; if (data) setMedicines(data); const { data: txData } = await supabase.from("stock_transactions").select("*").in("action", ["out","in"]); if (txData) setAllTransactions(txData); } catch (error) { console.error(error); } finally { setLoading(false); } };
   const fetchCategories = async () => { try { const { data, error } = await supabase.from("cabinet_categories").select("*").order("id"); if (error) throw error; if (data && data.length > 0) setCategoriesList(data); } catch (error) { console.error(error); } };
-  const fetchVisitorNotes = async () => { try { const { data } = await supabase.from("stock_transactions").select("*").eq("status", "visitor_note").order("created_at", { ascending: false }); if (data) setVisitorNotes(data); } catch (error) { console.error(error); } };
+  const fetchVisitorNotes = async () => { 
+    try { 
+      const { data } = await supabase.from("stock_transactions").select("*").eq("status", "visitor_note").order("created_at", { ascending: false }); 
+      if (data) setVisitorNotes(data); 
+    } catch (error) { console.error(error); } 
+  };
   const fetchStaffRows = async () => { try { const { data } = await supabase.from("staff_accounts").select("*").order("name"); if (data) setStaffRows(data); } catch (e) {} };
 
   useEffect(() => { fetchMedicines(); fetchCategories(); fetchVisitorNotes(); fetchStaffRows(); const savedCat = localStorage.getItem(`saved_cat_${session.id}`); if (savedCat) setSelectedCategory(savedCat === "all" ? "all" : Number(savedCat)); }, []);
@@ -119,7 +124,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       const { error } = await supabase.from("staff_accounts").delete().eq("id", staffId);
       if (error) throw error;
       alert(`ลบผู้ใช้ ${staffName} สำเร็จ!`);
-      fetchStaffRows();
+      await fetchStaffRows();
       refreshStaffList();
     } catch (e: any) { alert("ลบไม่สำเร็จ: " + e.message); }
   };
@@ -133,7 +138,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       if (error) throw error;
       alert(`เพิ่มเจ้าหน้าที่ ${name} สำเร็จ! (รหัสผ่านเริ่มต้น: 1234)`);
       setNewStaffNameInput("");
-      fetchStaffRows();
+      await fetchStaffRows();
       refreshStaffList();
     } catch (e: any) { alert("เพิ่มไม่สำเร็จ: " + e.message); }
   };
@@ -179,7 +184,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     finally { setVisitorSubmitting(false); }
   };
 
-  // Excel Import Handler
   const handleImportExcel = async () => {
     if (!importText.trim()) return alert("กรุณาวางข้อมูล CSV หรือข้อความที่ต้องการนำเข้า");
     setImporting(true);
@@ -292,21 +296,21 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       <div className="max-w-[1400px] mx-auto space-y-4 md:space-y-6">
         {/* Header - Glassmorphism */}
         <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-white/70 backdrop-blur-xl p-4 md:p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/80">
-          <div className="w-full flex justify-between items-start md:items-center">
+          <div className="w-full xl:w-auto flex justify-between items-start md:items-center">
             <div><h1 className="text-2xl md:text-3xl font-extrabold text-slate-800 leading-tight tracking-tight">ระบบคลังยา <br className="md:hidden" /><span className="text-base md:text-2xl font-semibold text-slate-500 opacity-80">(จัดล็อต EXP)</span></h1></div>
             <div className="text-right md:hidden"><div className="text-[10px] font-medium text-slate-700 flex items-center justify-end gap-1 bg-white/80 px-3 py-1.5 rounded-full border border-white shadow-sm"><User size={12} className="text-slate-400" /> {session.name}</div></div>
           </div>
-          <div className="flex flex-wrap md:flex-nowrap items-center gap-2.5 w-full xl:w-auto mt-2 xl:mt-0">
-            <button onClick={() => setIsVisitorMainModalOpen(true)} className="flex-1 md:flex-none flex justify-center items-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2.5 md:py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><MessageSquareText size={16} /> โน้ตผู้มาเยือน</button>
-            <button onClick={() => setIsQRModalOpen(true)} className="flex-1 md:flex-none flex justify-center items-center gap-1.5 bg-indigo-50/80 text-indigo-700 border border-indigo-200/50 hover:bg-indigo-100 px-3 py-2.5 md:py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><QrCode size={16} /> พิมพ์ QR</button>
-            <button onClick={() => setIsReportModalOpen(true)} className="flex-1 md:flex-none flex justify-center items-center gap-1.5 bg-blue-50/80 text-blue-700 border border-blue-200/50 hover:bg-blue-100 px-3 py-2.5 md:py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><FileText size={16} /> พิมพ์รายงาน</button>
-            <button onClick={() => setIsImportModalOpen(true)} className="flex-1 md:flex-none flex justify-center items-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2.5 md:py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Upload size={16} /> นำเข้า</button>
-            <button onClick={openAddMedModal} className="flex-1 md:flex-none flex justify-center items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2.5 md:py-2 rounded-xl font-medium text-xs md:text-sm shadow-md shadow-emerald-200 transition-all"><Plus size={18} /> เพิ่มยา</button>
+          <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto mt-2 xl:mt-0">
+            <button onClick={() => setIsVisitorMainModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><MessageSquareText size={16} /> โน้ตผู้มาเยือน</button>
+            <button onClick={() => setIsQRModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-indigo-50/80 text-indigo-700 border border-indigo-200/50 hover:bg-indigo-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><QrCode size={16} /> พิมพ์ QR</button>
+            <button onClick={() => setIsReportModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-blue-50/80 text-blue-700 border border-blue-200/50 hover:bg-blue-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><FileText size={16} /> พิมพ์รายงาน</button>
+            <button onClick={() => setIsImportModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Upload size={16} /> นำเข้า</button>
+            <button onClick={openAddMedModal} className="flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-3.5 py-2 rounded-xl font-medium text-xs md:text-sm shadow-md shadow-emerald-200 transition-all"><Plus size={18} /> เพิ่มยา</button>
             {session.name === "Admin" && (
-              <button onClick={() => setIsStaffAdminModalOpen(true)} title="จัดการเจ้าหน้าที่" className="flex items-center gap-1.5 bg-purple-50/80 text-purple-700 border border-purple-200 hover:bg-purple-100 px-3 py-2.5 md:py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Users size={16}/> จัดการเจ้าหน้าที่</button>
+              <button onClick={() => setIsStaffAdminModalOpen(true)} title="จัดการเจ้าหน้าที่" className="flex items-center gap-1.5 bg-purple-50/80 text-purple-700 border border-purple-200 hover:bg-purple-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Users size={16}/> จัดการเจ้าหน้าที่</button>
             )}
-            <button onClick={() => setIsChangePwdModalOpen(true)} title="เปลี่ยนรหัสผ่าน" className="p-2.5 bg-white/50 border border-white text-slate-500 rounded-xl hover:bg-blue-50 hover:text-blue-500 shadow-sm transition-all"><KeyRound size={20} /></button>
-            <button onClick={onLogout} title="ออกจากระบบ" className="p-2.5 bg-white/50 border border-white text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-500 shadow-sm transition-all"><LogOut size={20} /></button>
+            <button onClick={() => setIsChangePwdModalOpen(true)} title="เปลี่ยนรหัสผ่าน" className="p-2 bg-white/50 border border-white text-slate-500 rounded-xl hover:bg-blue-50 hover:text-blue-500 shadow-sm transition-all"><KeyRound size={18} /></button>
+            <button onClick={onLogout} title="ออกจากระบบ" className="p-2 bg-white/50 border border-white text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-500 shadow-sm transition-all"><LogOut size={18} /></button>
           </div>
         </div>
 
@@ -451,7 +455,8 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                             <option value="">-- เลือกล็อต EXP --</option>
                             {(medicines.find(m => m.id.toString() === visitorMedId)?.medicine_lots || []).filter((l: any) => l.current_stock > 0).map((lot: any) => {
                                const packs = Math.floor(lot.current_stock / lot.pack_size); const rem = lot.current_stock % lot.pack_size;
-                               return <option key={lot.id} value={lot.id}>EXP: {lot.exp_date} (เหลือ: {packs} กล่อง {rem > 0 ? `เศษ ${rem}` : ''} {lot.unit_name})</option>
+                               const unitStr = lot.unit_name === "'s" ? "'" : ` ${lot.unit_name}`;
+                               return <option key={lot.id} value={lot.id}>EXP: {lot.exp_date} ({packs} กล่อง × {lot.pack_size}{unitStr} {rem > 0 ? `+ เศษ ${rem}` : ''} | เหลือรวม: {lot.current_stock})</option>
                             })}
                          </select>
                       </div>
