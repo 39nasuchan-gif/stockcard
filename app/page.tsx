@@ -728,8 +728,8 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
               <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-slate-100">
                 <h3 className="text-sm font-bold flex items-center gap-2 mb-5 text-slate-700 border-b pb-4 border-slate-100"><History size={20} /> ประวัติการทำรายการล่าสุด</h3>
                 <div className="space-y-3.5">
-                  {historyLoading ? <div className="text-center text-slate-500 py-10 font-medium">กำลังโหลดข้อมูล...</div> : historyRows.filter(r => r.status !== 'visitor_note' && r.status !== 'visitor_acknowledged').length === 0 ? <div className="text-center text-slate-400 py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200 font-medium">ยังไม่มีประวัติการรับเข้า/ตัดจ่าย</div> : (
-                    historyRows.filter(r => r.status !== 'visitor_note' && r.status !== 'visitor_acknowledged').map((row: any) => {
+                  {historyLoading ? <div className="text-center text-slate-500 py-10 font-medium">กำลังโหลดข้อมูล...</div> : historyRows.filter(r => r.status === 'completed' || r.status === 'pending').length === 0 ? <div className="text-center text-slate-400 py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200 font-medium">ยังไม่มีประวัติการรับเข้า/ตัดจ่าย</div> : (
+                    historyRows.filter(r => r.status === 'completed' || r.status === 'pending').map((row: any) => {
                       const isInc = row.action === 'in'; const isPending = row.status === 'pending';
                       const lotInfo = (historyMed.medicine_lots || []).find((l: any) => l.id.toString() === row.lot_id?.toString());
                       const pSize = lotInfo?.pack_size || 100; const pUnit = lotInfo?.unit_name || 'หน่วย';
@@ -809,7 +809,7 @@ export default function StockCardPage() {
   }, []);
 
   const handleLogout = () => { localStorage.removeItem(SESSION_KEY); setSession(null); };
-  if (!checkedSession) return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-400">กำลังโหลด...</div>;
+  if (!checkedSession) return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-400">กำลังโหลดข้อมูล...</div>;
   if (!session) return <LoginScreen staffList={staffList} onLogin={setSession} />;
   return <StockCardApp session={session} onLogout={handleLogout} staffList={staffList} refreshStaffList={fetchStaffNames} />;
 }
