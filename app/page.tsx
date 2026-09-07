@@ -170,8 +170,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       medsToProcess.forEach(med => { 
         const medTxs = (txData || []).filter(tx => tx.medicine_id.toString() === med.id.toString()); 
         let runningBal = 0; 
-        
-        // Dictionary เก็บสต็อกที่เหลืออยู่แยกตามล็อต (เพื่อทำ breakdown ในรายงาน)
         let lotBalances: Record<string, { exp: string, qty: number, packSize: number, unitName: string }> = {};
 
         const processedTxs = medTxs.map(tx => { 
@@ -200,7 +198,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
             return p === 0 ? `${r} ${unit}` : `${p} กล่อง${r > 0 ? ` เศษ ${r} ${unit}` : ''}`; 
           }; 
           
-          // สร้างข้อความแจกแจงยอดคงเหลือแต่ละ EXP (เฉพาะที่ยอด > 0)
           const activeLots = Object.values(lotBalances).filter(l => l.qty > 0);
           let lotBreakdown: string[] = [];
           if (activeLots.length > 0) {
@@ -258,7 +255,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                         <td className="border border-gray-400 p-2 text-center text-red-600 font-bold align-top">{tx.action === 'out' ? tx.amountText : '-'}</td>
                         <td className="border border-gray-400 p-2 text-center align-top">
                            <div className="text-black font-bold">{tx.balanceText}</div>
-                           {/* ส่วนแสดงการแจกแจงยอดแต่ละล็อต EXP */}
                            {tx.lotBreakdown && tx.lotBreakdown.length > 0 && (
                              <div className="text-[10px] text-gray-700 font-medium mt-1 pt-1 border-t border-gray-300 text-left w-fit mx-auto leading-tight whitespace-nowrap">
                                 {tx.lotBreakdown.map((txt: string, i: number) => (
@@ -643,7 +639,31 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                     {stockInMode === 'existing' ? (
                       <div><label className="block text-sm font-bold text-emerald-700 mb-1.5">เลือกล็อต (EXP) *</label><select required className="w-full bg-white border border-emerald-200/50 rounded-xl p-3 font-medium outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm" value={selectedLotId} onChange={(e) => { setSelectedLotId(e.target.value); const l = (selectedMed.medicine_lots || []).find((x: any) => String(x.id) === e.target.value); if(l) { setStockPackSize(l.pack_size.toString()); setStockUnitName(l.unit_name); }}}><option value="">-- กรุณาเลือกล็อต --</option>{(selectedMed.medicine_lots || []).map((lot: any) => { const packs = Math.floor(lot.current_stock / lot.pack_size); const remainder = lot.current_stock % lot.pack_size; const unitString = lot.unit_name === "'s" ? "'" : ` ${lot.unit_name}`; const remainderText = remainder > 0 ? ` เศษ ${remainder}` : ""; return <option key={lot.id} value={lot.id}>EXP: {lot.exp_date} (เหลือ: {packs}x{lot.pack_size}{unitString}{remainderText})</option> })}</select></div>
                     ) : (
-                      <><div className="grid grid-cols-2 gap-3"><div className="col-span-2"><label className="block text-sm font-bold text-emerald-700 mb-1.5">วันหมดอายุ (EXP) *</label><input type="date" required className="w-full bg-white border border-emerald-200/50 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm" value={stockExpDate} onChange={(e) => setStockExpDate(e.target.value)} /></div><div><label className="block text-sm font-bold text-emerald-700 mb-1.5">ขนาดบรรจุ / กล่อง</label><input type="number" required min="1" className="w-full bg-white border border-emerald-200/50 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm" value={stockPackSize} onChange={(e) => setStockPackSize(e.target.value)} /></div><div><label className="block text-sm font-bold text-emerald-700 mb-1.5">หน่วยนับ</label><select className="w-full bg-white border border-emerald-200/50 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm" value={stockUnitName} onChange={(e) => setStockUnitName(e.target.value)}><option value="'s">'s (เม็ด)</option><option value="vial">vial</option><option value="amp">amp</option><option value="bottle">bottle</option><option value="box">box</option><option value="ชิ้น">ชิ้น</option><option value="อัน">อัน</option><option value="กระปุก">กระปุก</option><option value="ตลับ">ตลับ</option></select></div></div></>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-sm font-bold text-emerald-700 mb-1.5">วันหมดอายุ (EXP) *</label>
+                          <input type="date" required className="w-full bg-white border border-emerald-200/50 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm" value={stockExpDate} onChange={(e) => setStockExpDate(e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-bold text-emerald-700 mb-1.5">ขนาดบรรจุต่อกล่อง *</label>
+                          <input type="number" required min="1" className="w-full bg-white border border-emerald-200/50 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm" value={stockPackSize} onChange={(e) => setStockPackSize(e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-bold text-emerald-700 mb-1.5">หน่วยนับ *</label>
+                          <div className="grid grid-cols-3 gap-2">
+                            {["'s", "vial", "amp", "bottle", "box", "ชิ้น", "อัน", "กระปุก", "ตลับ"].map((u) => (
+                              <button
+                                key={u}
+                                type="button"
+                                onClick={() => setStockUnitName(u)}
+                                className={`py-2 px-2 text-xs font-bold rounded-xl border transition-all ${stockUnitName === u ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-white text-slate-700 border-emerald-200/60 hover:bg-emerald-50'}`}
+                              >
+                                {u === "'s" ? "'s (เม็ด)" : u}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
                     )}
                   </div>
                 ) : (
