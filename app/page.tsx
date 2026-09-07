@@ -34,8 +34,9 @@ const formatBoxString = (totalItems: number, packSize: number, unitName: string)
   if (packSize <= 1 || totalItems === 0) return `${totalItems} ${unitName}`; 
   const packs = Math.floor(totalItems / packSize); 
   const rem = totalItems % packSize; 
-  if (packs === 0) return `${rem} ${unitName}`; 
-  return `${packs} กล่อง × ${packSize} ${unitName} ${rem > 0 ? `(เศษ ${rem} ${unitName})` : ''}`; 
+  const unitStr = unitName === "'s" ? "เม็ด" : unitName;
+  if (packs === 0) return `${rem} ${unitStr}`; 
+  return `${packs} กล่อง × ${packSize} ${unitStr} ${rem > 0 ? `(เศษ ${rem} ${unitStr})` : ''}`; 
 }
 
 function LoginScreen({ onLogin, staffList }: { onLogin: (s: Session) => void, staffList: string[] }) {
@@ -770,15 +771,20 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           } 
           
           const formatPrintPack = (amt: number, size: number, unit: string) => { 
-            if(size <= 1 || amt === 0) return `${amt} ${unit}`; 
-            const p = Math.floor(amt / size); const r = amt % size; 
-            return p === 0 ? `${r} ${unit}` : `${p} กล่อง${r > 0 ? ` เศษ ${r} ${unit}` : ''}`; 
+            const unitStr = unit === "'s" ? "เม็ด" : unit;
+            if(size <= 1 || amt === 0) return `${amt} ${unitStr}`; 
+            const p = Math.floor(amt / size); 
+            const r = amt % size; 
+            return p === 0 ? `${r} ${unitStr}` : `${p} กล่อง × ${size} ${unitStr}${r > 0 ? ` (เศษ ${r} ${unitStr})` : ''}`; 
           }; 
           
           const activeLots = Object.values(lotBalances).filter(l => l.qty > 0);
           let lotBreakdown: string[] = [];
           if (activeLots.length > 0) {
-            lotBreakdown = activeLots.map(l => `EXP ${l.exp}: ${formatPrintPack(l.qty, l.packSize, l.unitName)}`);
+            lotBreakdown = activeLots.map(l => {
+              const uStr = l.unitName === "'s" ? "เม็ด" : l.unitName;
+              return `EXP ${l.exp}: ${formatPrintPack(l.qty, l.packSize, l.unitName)}`;
+            });
           }
 
           return { 
