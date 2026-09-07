@@ -126,7 +126,7 @@ function LoginScreen({ onLogin, staffList }: { onLogin: (s: Session) => void, st
                 onClick={() => openStaffLogin(name)} 
                 className={`flex items-center gap-2 justify-center border rounded-2xl p-3.5 font-medium transition-all ${name === 'Admin' ? 'bg-amber-50/80 text-amber-800 border-amber-200 hover:bg-amber-100 font-bold' : 'bg-white/50 border-white/60 text-slate-700 hover:bg-white/90 hover:shadow-sm'}`}
               >
-                <User 'Admin' 'text-amber-600' 'text-slate-400'} : ? className="{name" size="{18}"/> {name}
+                <User size={18} className={name === 'Admin' ? 'text-amber-600' : 'text-slate-400'} /> {name}
               </button>
             ))}
           </div>
@@ -136,8 +136,8 @@ function LoginScreen({ onLogin, staffList }: { onLogin: (s: Session) => void, st
           <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden border border-white">
               <div className="flex justify-between items-center p-5 border-b border-white/50 bg-white/40">
-                <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800"><Lock size="{18}"/> {selectedName}</h2>
-                <button onClick={closeModal}><X className="text-slate-400 hover:text-slate-600" size="{22}"/></button>
+                <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800"><Lock size={18} /> {selectedName}</h2>
+                <button onClick={closeModal}><X size={22} className="text-slate-400 hover:text-slate-600" /></button>
               </div>
               {loadingRow ? (
                 <div className="p-8 text-center text-slate-500">กำลังโหลด...</div>
@@ -822,7 +822,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           <div><h1 className="text-xl font-bold">ตัวอย่างก่อนพิมพ์รายงาน</h1></div>
           <div className="flex gap-3">
             <button onClick={() => setShowPrintView(false)} className="px-4 py-2 border rounded-lg font-medium">ปิด</button>
-            <button onClick={() => window.print()} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium flex gap-2"><Printer size="{18}"/> พิมพ์ PDF</button>
+            <button onClick={() => window.print()} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium flex gap-2"><Printer size={18}/> พิมพ์ PDF</button>
           </div>
         </div>
         <div className="print-content">
@@ -883,13 +883,13 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           <h1 className="text-xl font-bold">พิมพ์ QR Code</h1>
           <div className="flex gap-3">
             <button onClick={() => setShowQRPrintView(false)} className="px-4 py-2 border rounded-lg">ปิด</button>
-            <button onClick={() => window.print()} className="px-4 py-2 bg-blue-600 text-white rounded-lg flex gap-2"><Printer size="{18}"/> พิมพ์</button>
+            <button onClick={() => window.print()} className="px-4 py-2 bg-blue-600 text-white rounded-lg flex gap-2"><Printer size={18}/> พิมพ์</button>
           </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {qrPrintData.map((med) => (
             <div key={med.id} className="border-2 border-dashed border-gray-400 p-4 flex flex-col items-center justify-center text-center">
-              <QRCodeSVG !="=" ''}/medicine/${med.id}`} 'undefined' : ? size="{100}" value="{`${typeof" window window.location.origin/>
+              <QRCodeSVG value={`${typeof window !== 'undefined' ? window.location.origin : ''}/medicine/${med.id}`} size={100} />
               <div className="mt-3 font-bold text-sm leading-tight text-black">{med.name}</div>
             </div>
           ))}
@@ -908,20 +908,20 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
               <h1 className="text-2xl md:text-3xl font-extrabold text-slate-800 leading-tight tracking-tight">ระบบคลังยา <br className="md:hidden" /><span className="text-base md:text-2xl font-semibold text-slate-500 opacity-80">(จัดล็อต EXP)</span></h1>
             </div>
             <div className="text-right md:hidden">
-              <div className="text-[10px] font-medium text-slate-700 flex items-center justify-end gap-1 bg-white/80 px-3 py-1.5 rounded-full border border-white shadow-sm"><User className="text-slate-400" size="{12}"/> {session.name}</div>
+              <div className="text-[10px] font-medium text-slate-700 flex items-center justify-end gap-1 bg-white/80 px-3 py-1.5 rounded-full border border-white shadow-sm"><User size={12} className="text-slate-400" /> {session.name}</div>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto mt-2 xl:mt-0">
-            <button onClick={() => setIsVisitorMainModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><MessageSquareText size="{16}"/> โน้ตผู้มาเยือน</button>
-            <button onClick={() => setIsQRModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-indigo-50/80 text-indigo-700 border border-indigo-200/50 hover:bg-indigo-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><QrCode size="{16}"/> พิมพ์ QR</button>
-            <button onClick={() => setIsReportModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-blue-50/80 text-blue-700 border border-blue-200/50 hover:bg-blue-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><FileText size="{16}"/> พิมพ์รายงาน</button>
-            <button onClick={() => setIsImportModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Upload size="{16}"/> นำเข้า</button>
-            <button onClick={openAddMedModal} className="flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-3.5 py-2 rounded-xl font-medium text-xs md:text-sm shadow-md shadow-emerald-200 transition-all"><Plus size="{18}"/> เพิ่มยา</button>
+            <button onClick={() => setIsVisitorMainModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><MessageSquareText size={16} /> โน้ตผู้มาเยือน</button>
+            <button onClick={() => setIsQRModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-indigo-50/80 text-indigo-700 border border-indigo-200/50 hover:bg-indigo-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><QrCode size={16} /> พิมพ์ QR</button>
+            <button onClick={() => setIsReportModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-blue-50/80 text-blue-700 border border-blue-200/50 hover:bg-blue-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><FileText size={16} /> พิมพ์รายงาน</button>
+            <button onClick={() => setIsImportModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Upload size={16} /> นำเข้า</button>
+            <button onClick={openAddMedModal} className="flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-3.5 py-2 rounded-xl font-medium text-xs md:text-sm shadow-md shadow-emerald-200 transition-all"><Plus size={18} /> เพิ่มยา</button>
             {session.name === "Admin" && (
-              <button onClick={() => setIsStaffAdminModalOpen(true)} title="จัดการเจ้าหน้าที่" className="flex items-center gap-1.5 bg-purple-50/80 text-purple-700 border border-purple-200 hover:bg-purple-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Users size="{16}"/> จัดการเจ้าหน้าที่</button>
+              <button onClick={() => setIsStaffAdminModalOpen(true)} title="จัดการเจ้าหน้าที่" className="flex items-center gap-1.5 bg-purple-50/80 text-purple-700 border border-purple-200 hover:bg-purple-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Users size={16}/> จัดการเจ้าหน้าที่</button>
             )}
-            <button onClick={() => setIsChangePwdModalOpen(true)} title="เปลี่ยนรหัสผ่าน" className="p-2 bg-white/50 border border-white text-slate-500 rounded-xl hover:bg-blue-50 hover:text-blue-500 shadow-sm transition-all"><KeyRound size="{18}"/></button>
-            <button onClick={onLogout} title="ออกจากระบบ" className="p-2 bg-white/50 border border-white text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-500 shadow-sm transition-all"><LogOut size="{18}"/></button>
+            <button onClick={() => setIsChangePwdModalOpen(true)} title="เปลี่ยนรหัสผ่าน" className="p-2 bg-white/50 border border-white text-slate-500 rounded-xl hover:bg-blue-50 hover:text-blue-500 shadow-sm transition-all"><KeyRound size={18} /></button>
+            <button onClick={onLogout} title="ออกจากระบบ" className="p-2 bg-white/50 border border-white text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-500 shadow-sm transition-all"><LogOut size={18} /></button>
           </div>
         </div>
 
@@ -929,7 +929,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         {visitorNotes.length > 0 && (
           <div className="bg-amber-50/80 backdrop-blur-xl rounded-3xl shadow-sm border border-amber-200/50 p-4 md:p-5 w-full transition-all">
              <div className="flex items-center gap-2 mb-3 text-sm font-bold text-amber-700">
-                <Bell size="{18}"/> แจ้งเตือน: โน้ตจากผู้มาเยือนที่สแกน QR ({visitorNotes.length})
+                <Bell size={18} /> แจ้งเตือน: โน้ตจากผู้มาเยือนที่สแกน QR ({visitorNotes.length})
              </div>
              <div className="max-h-48 overflow-y-auto space-y-2.5 pr-2">
                 {visitorNotes.map(note => {
@@ -947,14 +947,14 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                               นำออก <span className="font-bold text-red-600">{formattedAmount}</span> (รวม {note.amount} {pUnit})
                            </div>
                            <div className="text-[11px] font-bold text-rose-500 mt-1 flex items-center gap-1">
-                              <CalendarDays size="{12}"/> EXP: {note.exp_date}
+                              <CalendarDays size={12}/> EXP: {note.exp_date}
                            </div>
                            <div className="text-[10px] text-slate-500 mt-2 font-medium bg-slate-50 px-2 py-1 rounded-lg inline-block border border-slate-100">
                               ผู้บันทึก: <span className="font-bold text-slate-700">{note.staff_name}</span> | {formatHistoryDate(note.created_at)}
                            </div>
                         </div>
                         <button onClick={() => handleAcknowledgeNote(note.id)} title="รับทราบข้อความนี้" className="p-3 bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white border border-emerald-200 rounded-xl transition-all shadow-sm flex items-center justify-center">
-                           <Check size="{22}"/>
+                           <Check size={22} />
                         </button>
                      </div>
                    )
@@ -965,7 +965,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
 
         {/* Categories - Glassmorphism Pastels */}
         <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/80 p-4 md:p-5 w-full">
-          <div className="flex items-center gap-2 mb-4 text-sm font-bold text-slate-500"><LayoutGrid size="{18}"/> หมวดหมู่ตู้ยา</div>
+          <div className="flex items-center gap-2 mb-4 text-sm font-bold text-slate-500"><LayoutGrid size={18} /> หมวดหมู่ตู้ยา</div>
           <div className="flex flex-wrap gap-2.5 mb-4">
             <button onClick={() => handleSelectCategory("all")} className={`px-4 py-2 rounded-2xl text-sm font-bold border backdrop-blur-md transition-all ${selectedCategory === "all" ? "bg-slate-800 text-white border-slate-700 shadow-md" : "bg-white/60 text-slate-600 border-white hover:bg-white/90 shadow-sm"}`}>ทั้งหมด</button>
             {categoriesList?.map((cat, index) => {
@@ -975,14 +975,14 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
               return (
               <div key={cat.id} className={`flex items-center gap-0.5 rounded-2xl border backdrop-blur-md px-1 transition-all duration-200 ${activeClass}`}>
                 <button onClick={() => handleSelectCategory(cat.id)} className="pl-3 pr-2 py-2 text-sm">{cat.name}</button>
-                <button onClick={() => { setEditingCategoryId(cat.id); setCategoryNameInput(cat.name); }} title="แก้ไขชื่อหมวดหมู่" className={`p-1 rounded-xl transition-colors ${isActive ? "text-slate-700 hover:bg-white/30" : "text-slate-400 hover:text-blue-600 hover:bg-white"}`}><Edit size="{14}"/></button>
+                <button onClick={() => { setEditingCategoryId(cat.id); setCategoryNameInput(cat.name); }} title="แก้ไขชื่อหมวดหมู่" className={`p-1 rounded-xl transition-colors ${isActive ? "text-slate-700 hover:bg-white/30" : "text-slate-400 hover:text-blue-600 hover:bg-white"}`}><Edit size={14} /></button>
               </div>
             )})}
-            <button onClick={handleAddCategory} className="px-4 py-2 rounded-2xl border-2 border-dashed border-slate-300 text-slate-500 hover:bg-white/60 text-sm font-semibold flex items-center gap-1.5 transition-all"><Plus size="{16}"/> เพิ่มตู้ยา</button>
+            <button onClick={handleAddCategory} className="px-4 py-2 rounded-2xl border-2 border-dashed border-slate-300 text-slate-500 hover:bg-white/60 text-sm font-semibold flex items-center gap-1.5 transition-all"><Plus size={16} /> เพิ่มตู้ยา</button>
           </div>
           <div className="flex flex-col md:flex-row gap-3 mt-4 items-center">
-            <div className="relative flex-1 w-full"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size="{18}"/><input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="ค้นหาชื่อยา, HosXP หรือหมายเหตุ..." className="w-full bg-white/50 border border-white rounded-2xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:ring-blue-400 text-slate-700 shadow-sm transition-all" /></div>
-            <div className="relative w-full md:w-auto shrink-0 flex items-center gap-2 bg-white/50 border border-white rounded-2xl px-4 py-1 shadow-sm transition-all"><ArrowUpDown className="text-slate-400 shrink-0" size="{16}"/>
+            <div className="relative flex-1 w-full"><Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" /><input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="ค้นหาชื่อยา, HosXP หรือหมายเหตุ..." className="w-full bg-white/50 border border-white rounded-2xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:ring-blue-400 text-slate-700 shadow-sm transition-all" /></div>
+            <div className="relative w-full md:w-auto shrink-0 flex items-center gap-2 bg-white/50 border border-white rounded-2xl px-4 py-1 shadow-sm transition-all"><ArrowUpDown size={16} className="text-slate-400 shrink-0"/>
               <select className="w-full bg-transparent outline-none text-sm font-medium text-slate-600 py-2 cursor-pointer" value={sortOrder} onChange={(e) => setSortOrder(e.target.value as 'recent'|'alpha')}>
                 <option value="alpha">เรียงตามตัวอักษร (A-Z, ก-ฮ)</option>
                 <option value="recent">เรียงตามแก้ไขล่าสุด (ใหม่-เก่า)</option>
@@ -995,7 +995,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         {editingCategoryId !== null && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[75]">
              <div className="bg-white/90 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-sm p-6 relative">
-                <button onClick={() => setEditingCategoryId(null)} className="absolute top-4 right-4 p-1 hover:bg-white/60 rounded-xl"><X className="text-slate-400" size="{20}"/></button>
+                <button onClick={() => setEditingCategoryId(null)} className="absolute top-4 right-4 p-1 hover:bg-white/60 rounded-xl"><X size={20} className="text-slate-400"/></button>
                 <h2 className="text-lg font-bold text-slate-800 mb-4">แก้ไขชื่อหมวดหมู่ตู้ยา</h2>
                 <form onSubmit={handleRenameCategory} className="space-y-4">
                    <input type="text" required className="w-full bg-white/50 border border-slate-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 shadow-sm" value={categoryNameInput} onChange={(e) => setCategoryNameInput(e.target.value)} placeholder="ชื่อตู้ยาใหม่" />
@@ -1009,11 +1009,11 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         {isStaffAdminModalOpen && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[80]">
              <div className="bg-white/95 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-lg p-6 relative max-h-[85vh] overflow-y-auto">
-                <button onClick={() => setIsStaffAdminModalOpen(false)} className="absolute top-4 right-4 p-1 hover:bg-slate-100 rounded-xl"><X className="text-slate-400" size="{20}"/></button>
-                <h2 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2"><Users className="text-purple-600" size="{22}"/> จัดการรายชื่อเจ้าหน้าที่</h2>
+                <button onClick={() => setIsStaffAdminModalOpen(false)} className="absolute top-4 right-4 p-1 hover:bg-slate-100 rounded-xl"><X size={20} className="text-slate-400"/></button>
+                <h2 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2"><Users size={22} className="text-purple-600"/> จัดการรายชื่อเจ้าหน้าที่</h2>
                 
                 <form onSubmit={handleAdminAddStaff} className="mb-6 bg-purple-50/60 p-4 rounded-2xl border border-purple-100 space-y-3">
-                   <h3 className="text-sm font-bold text-purple-800 flex items-center gap-1.5"><UserPlus size="{16}"/> เพิ่มเจ้าหน้าที่ใหม่</h3>
+                   <h3 className="text-sm font-bold text-purple-800 flex items-center gap-1.5"><UserPlus size={16}/> เพิ่มเจ้าหน้าที่ใหม่</h3>
                    <div className="flex gap-2">
                       <input type="text" required placeholder="ชื่อเจ้าหน้าที่" className="flex-1 bg-white border border-purple-200 rounded-xl p-2.5 text-sm outline-none shadow-sm" value={newStaffNameInput} onChange={(e) => setNewStaffNameInput(e.target.value)} />
                       <button type="submit" className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm">เพิ่ม</button>
@@ -1027,11 +1027,11 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                          <span className="font-semibold text-sm text-slate-800">{st.name} {st.name === 'Admin' && <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full ml-1 font-bold">Admin</span>}</span>
                          <div className="flex items-center gap-2">
                             <button onClick={() => handleAdminResetStaffPwd(st.id, st.name)} className="bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1">
-                               <KeyRound size="{12}"/> เปลี่ยนรหัสผ่าน
+                               <KeyRound size={12}/> เปลี่ยนรหัสผ่าน
                             </button>
                             {st.name !== 'Admin' && (
                                <button onClick={() => handleAdminDeleteStaff(st.id, st.name)} title="ลบผู้ใช้" className="bg-red-50 border border-red-200 hover:bg-red-500 hover:text-white text-red-600 p-2 rounded-xl transition-all shadow-sm">
-                                  <Trash2 size="{14}"/>
+                                  <Trash2 size={14}/>
                                </button>
                             )}
                          </div>
@@ -1046,8 +1046,8 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         {isVisitorMainModalOpen && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[80]">
              <div className="bg-white/95 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto">
-                <button onClick={() => { setIsVisitorMainModalOpen(false); setVisitorSearchTerm(""); setVisitorMedId(""); setVisitorLotId(""); }} className="absolute top-4 right-4 p-1 hover:bg-slate-100 rounded-xl"><X className="text-slate-400" size="{20}"/></button>
-                <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><MessageSquareText className="text-amber-600" size="{20}"/> โน้ตสำหรับผู้มาเยือน</h2>
+                <button onClick={() => { setIsVisitorMainModalOpen(false); setVisitorSearchTerm(""); setVisitorMedId(""); setVisitorLotId(""); }} className="absolute top-4 right-4 p-1 hover:bg-slate-100 rounded-xl"><X size={20} className="text-slate-400"/></button>
+                <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><MessageSquareText size={20} className="text-amber-600"/> โน้ตสำหรับผู้มาเยือน</h2>
                 <form onSubmit={handleVisitorMainSubmit} className="space-y-3">
                    <div>
                       <label className="block text-xs font-bold text-slate-600 mb-1">ค้นหาและเลือกรายการยา *</label>
@@ -1112,7 +1112,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                       <div className="mt-1.5"><span className="text-[10px] font-semibold bg-white/60 text-slate-600 px-3 py-1 rounded-full border border-white shadow-sm w-fit inline-block">ตู้ยา: {getCategoryName(med.cabinet_category)}</span></div>
                     </div>
                     <div className="flex flex-col gap-2 shrink-0 w-[72px]">
-                      <div className="flex gap-1.5 w-full"><button onClick={() => openEditMedModal(med)} className="flex-1 p-2 bg-white/60 border border-white text-slate-500 rounded-xl hover:bg-blue-50 hover:text-blue-600 flex justify-center shadow-sm"><Edit size="{14}"/></button><button onClick={() => handleDeleteMed(med.id)} className="flex-1 p-2 bg-white/60 border border-white text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-500 flex justify-center shadow-sm"><Trash2 size="{14}"/></button></div>
+                      <div className="flex gap-1.5 w-full"><button onClick={() => openEditMedModal(med)} className="flex-1 p-2 bg-white/60 border border-white text-slate-500 rounded-xl hover:bg-blue-50 hover:text-blue-600 flex justify-center shadow-sm"><Edit size={14} /></button><button onClick={() => handleDeleteMed(med.id)} className="flex-1 p-2 bg-white/60 border border-white text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-500 flex justify-center shadow-sm"><Trash2 size={14} /></button></div>
                       <button onClick={() => toggleAvailability(med)} className={`w-full py-1.5 text-[10px] font-bold border rounded-xl flex justify-center items-center gap-1 shadow-sm transition-colors ${isAvail ? 'bg-emerald-50/80 text-emerald-700 border-emerald-200/50 hover:bg-emerald-100' : 'bg-red-100 text-red-700 border-red-300 hover:bg-red-200'}`}>
                         <div className={`w-1.5 h-1.5 rounded-full ${isAvail ? 'bg-emerald-400' : 'bg-red-500'}`}></div>{isAvail ? "เบิกได้" : "คลังเป็น 0"}
                       </button>
@@ -1126,7 +1126,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                             const fullPacks = Math.floor(lot.current_stock / lot.pack_size); const remainder = lot.current_stock % lot.pack_size;
                             return (
                               <div key={lot.id} className="flex justify-between items-center bg-white/50 border border-white p-2.5 rounded-2xl shadow-sm">
-                                <span className="text-[10px] font-bold text-rose-500 flex items-center gap-1"><CalendarDays size="{12}"/> EXP: {lot.exp_date}</span>
+                                <span className="text-[10px] font-bold text-rose-500 flex items-center gap-1"><CalendarDays size={12} /> EXP: {lot.exp_date}</span>
                                 <div className="flex items-baseline gap-1 text-sm"><span className="font-extrabold text-emerald-600">{fullPacks}</span><span className="text-slate-400 text-[9px] font-medium">x</span><span className="text-slate-700 font-bold">{lot.pack_size}</span>{remainder > 0 && <span className="text-amber-500 font-bold ml-1 text-[9px]">เศษ {remainder}</span>}<span className="text-slate-500 text-[9px] ml-1 font-medium">{lot.unit_name}</span></div>
                               </div>
                             )
@@ -1135,8 +1135,8 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                      )}
                   </div>
                   <div className="grid grid-cols-2 gap-2 mt-auto pt-2">
-                      <button onClick={() => openStockModal(med, 'in')} className="flex items-center justify-center gap-1.5 p-2.5 bg-emerald-50/80 text-emerald-700 rounded-xl border border-emerald-100/50 font-bold text-xs shadow-sm hover:bg-emerald-100 transition-colors"><PackagePlus size="{16}"/> รับเข้า</button>
-                      <button onClick={() => openStockModal(med, 'out')} className="flex items-center justify-center gap-1.5 p-2.5 bg-red-50/80 text-red-700 rounded-xl border border-red-100/50 font-bold text-xs shadow-sm hover:bg-red-100 transition-colors"><PackageMinus size="{16}"/> ตัดจ่าย</button>
+                      <button onClick={() => openStockModal(med, 'in')} className="flex items-center justify-center gap-1.5 p-2.5 bg-emerald-50/80 text-emerald-700 rounded-xl border border-emerald-100/50 font-bold text-xs shadow-sm hover:bg-emerald-100 transition-colors"><PackagePlus size={16} /> รับเข้า</button>
+                      <button onClick={() => openStockModal(med, 'out')} className="flex items-center justify-center gap-1.5 p-2.5 bg-red-50/80 text-red-700 rounded-xl border border-red-100/50 font-bold text-xs shadow-sm hover:bg-red-100 transition-colors"><PackageMinus size={16} /> ตัดจ่าย</button>
                   </div>
                   <div className="bg-blue-50/40 backdrop-blur-sm p-3 rounded-2xl border border-blue-100/30 mt-1 space-y-1.5">
                     <div className="flex justify-between text-[11px]"><span className="text-slate-500 font-medium">ใช้รวม ({medStats.daysDiff} วัน):</span><span className="font-bold text-slate-800">{formatBoxString(medStats.totalUsage, latestPackSize, latestUnitName)}</span></div>
@@ -1153,8 +1153,8 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         {isChangePwdModalOpen && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[80]">
             <div className="bg-white/90 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden p-6 text-center relative">
-               <button onClick={() => setIsChangePwdModalOpen(false)} className="absolute top-4 right-4 p-1 hover:bg-white/60 rounded-xl"><X className="text-slate-400" size="{20}"/></button>
-               <div className="w-16 h-16 bg-blue-100/80 text-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm border border-blue-200/50"><KeyRound size="{32}"/></div>
+               <button onClick={() => setIsChangePwdModalOpen(false)} className="absolute top-4 right-4 p-1 hover:bg-white/60 rounded-xl"><X size={20} className="text-slate-400"/></button>
+               <div className="w-16 h-16 bg-blue-100/80 text-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm border border-blue-200/50"><KeyRound size={32}/></div>
                <h2 className="text-lg font-bold text-slate-800 mb-4">เปลี่ยนรหัสผ่าน</h2>
                <form onSubmit={handleChangePassword} className="space-y-4 text-left">
                   <div><label className="block text-sm font-medium mb-1.5 text-slate-600">รหัสผ่านเดิม</label><input type="password" required className="w-full bg-white/50 border border-white rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 shadow-sm" value={oldPwd} onChange={(e) => setOldPwd(e.target.value)} /></div>
@@ -1171,7 +1171,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         {isMedModalOpen && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
             <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-white">
-              <div className="flex justify-between items-center p-5 md:p-6 border-b border-white/50 bg-white/40"><h2 className="text-lg md:text-xl font-bold text-slate-800">{isEditing ? 'แก้ไขข้อมูลยา' : 'เพิ่มรายการยาใหม่'}</h2><button onClick={() => setIsMedModalOpen(false)} className="p-1 hover:bg-white/60 rounded-xl transition-colors"><X className="text-slate-500" size="{22}"/></button></div>
+              <div className="flex justify-between items-center p-5 md:p-6 border-b border-white/50 bg-white/40"><h2 className="text-lg md:text-xl font-bold text-slate-800">{isEditing ? 'แก้ไขข้อมูลยา' : 'เพิ่มรายการยาใหม่'}</h2><button onClick={() => setIsMedModalOpen(false)} className="p-1 hover:bg-white/60 rounded-xl transition-colors"><X size={22} className="text-slate-500" /></button></div>
               <form onSubmit={handleSaveMedicine} className="p-5 md:p-6 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div><label className="block text-sm font-medium mb-1.5 text-slate-600">ชื่อยา *</label><input type="text" required className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400" value={medFormData.name} onChange={(e) => setMedFormData({ ...medFormData, name: e.target.value })} /></div>
@@ -1189,7 +1189,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         {isQRModalOpen && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
             <div className="bg-white/80 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
-              <div className="flex justify-between items-center p-5 border-b border-white/50"><h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><QrCode size="{20}"/> พิมพ์ QR Code</h2><button onClick={() => setIsQRModalOpen(false)}><X className="text-slate-400 hover:text-slate-600" size="{22}"/></button></div>
+              <div className="flex justify-between items-center p-5 border-b border-white/50"><h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><QrCode size={20}/> พิมพ์ QR Code</h2><button onClick={() => setIsQRModalOpen(false)}><X size={22} className="text-slate-400 hover:text-slate-600" /></button></div>
               <div className="p-6 space-y-4">
                 <div>
                    <label className="block text-sm font-medium mb-1.5 text-slate-600">เลือกตู้ยา (Cabinet)</label>
@@ -1213,11 +1213,11 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         {isReportModalOpen && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
             <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden border border-white">
-              <div className="flex justify-between items-center p-5 border-b border-white/50 bg-blue-50/50"><h2 className="text-lg font-bold flex items-center gap-2 text-blue-800"><FileText size="{20}"/> พิมพ์รายงาน Stock Card</h2><button onClick={() => setIsReportModalOpen(false)} className="p-1 hover:bg-white/60 rounded-xl transition-colors"><X className="text-blue-400" size="{20}"/></button></div>
+              <div className="flex justify-between items-center p-5 border-b border-white/50 bg-blue-50/50"><h2 className="text-lg font-bold flex items-center gap-2 text-blue-800"><FileText size={20} /> พิมพ์รายงาน Stock Card</h2><button onClick={() => setIsReportModalOpen(false)} className="p-1 hover:bg-white/60 rounded-xl transition-colors"><X size={20} className="text-blue-400" /></button></div>
               <div className="p-6 space-y-5">
                 <div><label className="block text-sm font-medium mb-2 text-slate-600">เลือกตู้ยา (Cabinet)</label><select className="w-full bg-white/60 border border-white shadow-sm rounded-xl p-3.5 outline-none focus:ring-2 focus:ring-blue-400 font-medium text-slate-700" value={reportTargetCategory} onChange={(e) => { setReportTargetCategory(e.target.value === "all" ? "all" : Number(e.target.value)); setReportTargetId("all"); }}><option value="all">-- ทุกตู้ยา --</option>{categoriesList?.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}</select></div>
                 <div><label className="block text-sm font-medium mb-2 text-slate-600">เลือกรายการยาที่ต้องการพิมพ์</label><select className="w-full bg-white/60 border border-white shadow-sm rounded-xl p-3.5 outline-none focus:ring-2 focus:ring-blue-400 font-medium text-slate-700" value={reportTargetId} onChange={(e) => setReportTargetId(e.target.value)}><option value="all">-- พิมพ์ทั้งหมด (ตามตู้ที่เลือก) --</option>{medicines.filter(m => reportTargetCategory === "all" || String(m.cabinet_category) === String(reportTargetCategory)).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
-                <div className="pt-2 flex gap-3"><button onClick={() => setIsReportModalOpen(false)} className="flex-1 bg-white/60 border border-white p-3.5 rounded-xl font-medium text-slate-600 shadow-sm">ยกเลิก</button><button onClick={handleGenerateReport} disabled={isGeneratingReport} className="flex-1 bg-blue-500 hover:bg-blue-600 text-white p-3.5 rounded-xl font-medium shadow-md shadow-blue-200 transition-colors disabled:opacity-60 flex justify-center items-center gap-2">{isGeneratingReport ? "รอสักครู่..." : <><Printer size="{18}"/> สร้าง PDF</>}</button></div>
+                <div className="pt-2 flex gap-3"><button onClick={() => setIsReportModalOpen(false)} className="flex-1 bg-white/60 border border-white p-3.5 rounded-xl font-medium text-slate-600 shadow-sm">ยกเลิก</button><button onClick={handleGenerateReport} disabled={isGeneratingReport} className="flex-1 bg-blue-500 hover:bg-blue-600 text-white p-3.5 rounded-xl font-medium shadow-md shadow-blue-200 transition-colors disabled:opacity-60 flex justify-center items-center gap-2">{isGeneratingReport ? "รอสักครู่..." : <><Printer size={18}/> สร้าง PDF</>}</button></div>
               </div>
             </div>
           </div>
@@ -1225,7 +1225,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         {isImportModalOpen && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
             <div className="bg-white/90 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden p-6">
-               <div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Upload size="{20}"/> นำเข้าข้อมูลยา</h2><button onClick={() => setIsImportModalOpen(false)}><X className="text-slate-400" size="{20}"/></button></div>
+               <div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Upload size={20}/> นำเข้าข้อมูลยา</h2><button onClick={() => setIsImportModalOpen(false)}><X size={20} className="text-slate-400" /></button></div>
                <p className="text-xs text-slate-500 mb-3">รูปแบบข้อมูลแต่ละบรรทัด (คั่นด้วยจุลภาค comma): <br/><code className="bg-slate-100 p-1 rounded text-slate-700">ชื่อยา, รหัสHosXP, หมายเหตุ, รหัสตู้ยา(ตัวเลข), สต็อกขั้นต่ำ</code></p>
                <textarea rows={6} className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-blue-400 mb-4 shadow-sm font-mono" placeholder="พาราสเซทตามอล, P01, ยาแก้ปวด, 1, 10&#10;อม็อกซี่ซิลลิน, A02, ยาปฏิชีวนะ, 1, 5" value={importText} onChange={(e) => setImportText(e.target.value)} />
                <div className="flex gap-3">
@@ -1241,8 +1241,8 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[70]">
             <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-white flex flex-col max-h-[90vh]">
               <div className={`flex justify-between items-center p-5 border-b border-white/50 ${stockAction === 'in' ? 'bg-emerald-50/60' : 'bg-red-50/60'}`}>
-                <h2 className={`text-lg font-bold flex items-center gap-2 ${stockAction === 'in' ? 'text-emerald-700' : 'text-red-700'}`}>{stockAction === 'in' ? <PackagePlus size="{22}"/> : <PackageMinus size="{22}"/>}{stockAction === 'in' ? 'รับเข้าสต็อก' : 'ตัดจ่ายสต็อก'}</h2>
-                <button onClick={() => setIsStockModalOpen(false)}><X className="text-slate-400 hover:text-slate-600" size="{24}"/></button>
+                <h2 className={`text-lg font-bold flex items-center gap-2 ${stockAction === 'in' ? 'text-emerald-700' : 'text-red-700'}`}>{stockAction === 'in' ? <PackagePlus size={22} /> : <PackageMinus size={22} />}{stockAction === 'in' ? 'รับเข้าสต็อก' : 'ตัดจ่ายสต็อก'}</h2>
+                <button onClick={() => setIsStockModalOpen(false)}><X size={24} className="text-slate-400 hover:text-slate-600" /></button>
               </div>
               <form onSubmit={handleUpdateStock} className="p-6 space-y-4 overflow-y-auto">
                 <div className="font-extrabold text-slate-800 mb-2 border-b border-slate-100 pb-3">{selectedMed.name}</div>
@@ -1325,8 +1325,8 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         {isHistoryModalOpen && historyMed && (
           <div className="fixed inset-0 bg-slate-50 flex flex-col z-50 overflow-y-auto w-full h-full">
             <div className="bg-white/80 backdrop-blur-md border-b border-slate-200 flex justify-between items-center p-4 sticky top-0 z-10 shadow-sm">
-              <button onClick={() => { setIsHistoryModalOpen(false); setHistoryMed(null); setHistoryRows([]); }} className="flex items-center text-sm font-bold text-slate-600 hover:text-blue-600 transition-colors"><ArrowLeft className="mr-1.5" size="{18}"/> กลับหน้ารวม</button>
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full"><User size="{14}"/> {session.name}</div>
+              <button onClick={() => { setIsHistoryModalOpen(false); setHistoryMed(null); setHistoryRows([]); }} className="flex items-center text-sm font-bold text-slate-600 hover:text-blue-600 transition-colors"><ArrowLeft size={18} className="mr-1.5"/> กลับหน้ารวม</button>
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full"><User size={14} /> {session.name}</div>
             </div>
             <div className="p-4 md:p-6 max-w-3xl mx-auto w-full space-y-5 pb-20">
               <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-slate-100">
@@ -1338,7 +1338,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                   </div>
                 </div>
                 <div className="mb-6 bg-slate-50 rounded-2xl p-5 border border-slate-100">
-                  <h3 className="text-sm font-bold flex items-center gap-2 mb-4 text-slate-600"><CalendarDays size="{18}"/> สต็อกคงเหลือแบ่งตาม EXP</h3>
+                  <h3 className="text-sm font-bold flex items-center gap-2 mb-4 text-slate-600"><CalendarDays size={18} /> สต็อกคงเหลือแบ่งตาม EXP</h3>
                   <div className="flex flex-wrap gap-3">
                     {(!historyMed.medicine_lots || historyMed.medicine_lots.filter((l: any) => l.current_stock > 0).length === 0) ? <div className="text-sm text-red-500 font-bold bg-red-50 px-4 py-2 rounded-xl border border-red-100">สต็อกหมด</div> : (
                       historyMed.medicine_lots.filter((l: any) => l.current_stock > 0).sort((a: any, b: any) => new Date(a.exp_date).getTime() - new Date(b.exp_date).getTime()).map((lot: any) => {
@@ -1355,13 +1355,13 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 md:gap-4">
-                  <button onClick={() => openStockModal(historyMed, 'in')} className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-100/80 text-emerald-700 p-5 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm"><PackagePlus size="{28}"/><span className="font-bold text-sm md:text-base">รับเข้าสต็อก</span></button>
-                  <button onClick={() => openStockModal(historyMed, 'out')} className="bg-red-50 hover:bg-red-100 border border-red-100/80 text-red-700 p-5 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm"><PackageMinus size="{28}"/><span className="font-bold text-sm md:text-base">ตัดจ่ายสต็อก</span></button>
+                  <button onClick={() => openStockModal(historyMed, 'in')} className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-100/80 text-emerald-700 p-5 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm"><PackagePlus size={28} /><span className="font-bold text-sm md:text-base">รับเข้าสต็อก</span></button>
+                  <button onClick={() => openStockModal(historyMed, 'out')} className="bg-red-50 hover:bg-red-100 border border-red-100/80 text-red-700 p-5 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm"><PackageMinus size={28} /><span className="font-bold text-sm md:text-base">ตัดจ่ายสต็อก</span></button>
                 </div>
               </div>
 
               <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-slate-100">
-                <h3 className="text-sm font-bold flex items-center gap-2 mb-5 text-slate-700 border-b pb-4 border-slate-100"><History size="{20}"/> ประวัติการทำรายการล่าสุด</h3>
+                <h3 className="text-sm font-bold flex items-center gap-2 mb-5 text-slate-700 border-b pb-4 border-slate-100"><History size={20} /> ประวัติการทำรายการล่าสุด</h3>
                 <div className="space-y-3.5">
                   {historyLoading ? <div className="text-center text-slate-500 py-10 font-medium">กำลังโหลดข้อมูล...</div> : historyRows.filter(r => r.status === 'completed' || r.status === 'pending').length === 0 ? <div className="text-center text-slate-400 py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200 font-medium">ยังไม่มีประวัติการรับเข้า/ตัดจ่าย</div> : (
                     historyRows.filter(r => r.status === 'completed' || r.status === 'pending').map((row: any) => {
@@ -1374,14 +1374,14 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                           <div className="flex items-start justify-between">
                             <div className="flex items-start gap-3 md:gap-4">
                               <div className={`p-2.5 rounded-xl mt-0.5 shadow-sm ${isPending ? 'bg-amber-100 text-amber-600' : isInc ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
-                                {isPending ? <Clock size="{22}"/> : isInc ? <PackagePlus size="{22}"/> : <PackageMinus size="{22}"/>}
+                                {isPending ? <Clock size={22} /> : isInc ? <PackagePlus size={22} /> : <PackageMinus size={22} />}
                               </div>
                               <div>
                                 <div className={`text-sm md:text-base font-extrabold ${isPending ? 'text-amber-700' : isInc ? 'text-emerald-700' : 'text-red-700'}`}>
                                   {isPending ? 'รอรับเข้า' : isInc ? 'รับเข้า' : 'ตัดจ่าย'} {formatBoxString(row.amount, pSize, pUnit)}
                                 </div>
                                 <div className="text-xs font-bold text-blue-500 mt-0.5">(รวมทั้งหมด {row.amount} {pUnit})</div>
-                                <div className="text-[10px] md:text-xs text-slate-500 flex items-center gap-1 mt-2 font-medium"><CalendarDays size="{12}"/> EXP: {row.exp_date || "-"}</div>
+                                <div className="text-[10px] md:text-xs text-slate-500 flex items-center gap-1 mt-2 font-medium"><CalendarDays size={12} /> EXP: {row.exp_date || "-"}</div>
                                 <div className="text-[10px] text-slate-400 mt-1 font-medium">{formatHistoryDate(row.created_at)}</div>
                                 
                                 {isPending && <div className="mt-2.5 text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200 inline-block shadow-sm">คาดว่าจะเข้า: {row.expected_date ? new Date(row.expected_date).toLocaleDateString('th-TH') : '-'}</div>}
@@ -1389,9 +1389,9 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                               </div>
                             </div>
                             <div className="flex flex-col items-end gap-2 shrink-0">
-                               <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-sm"><User size="{12}"/> {row.staff_name}</div>
+                               <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-sm"><User size={12} /> {row.staff_name}</div>
                                {isPending && (
-                                 <PendingApproveButton onApprove="{(setDone)" tx="{row}"> handleApprovePending(row, setDone)} />
+                                 <PendingApproveButton tx={row} onApprove={(setDone) => handleApprovePending(row, setDone)} />
                                )}
                             </div>
                           </div>
@@ -1423,7 +1423,7 @@ function PendingApproveButton({ tx, onApprove }: { tx: any, onApprove: (setDone:
 }
 
 export default function StockCardPage() {
-  const [session, setSession] = useState<Session null |>(null); 
+  const [session, setSession] = useState<Session | null>(null); 
   const [checkedSession, setCheckedSession] = useState(false);
   const [staffList, setStaffList] = useState<string[]>(DEFAULT_STAFF_LIST);
 
@@ -1453,6 +1453,6 @@ export default function StockCardPage() {
   };
 
   if (!checkedSession) return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-400">กำลังโหลดข้อมูล...</div>;
-  if (!session) return <LoginScreen onLogin="{setSession}" staffList="{staffList}"/>;
-  return <StockCardApp onLogout="{handleLogout}" refreshStaffList="{fetchStaffNames}" session="{session}" staffList="{staffList}"/>;
+  if (!session) return <LoginScreen staffList={staffList} onLogin={setSession} />;
+  return <StockCardApp session={session} onLogout={handleLogout} staffList={staffList} refreshStaffList={fetchStaffNames} />;
 }
