@@ -247,6 +247,10 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const [visitorSubmitting, setVisitorSubmitting] = useState(false);
   const [visitorNotes, setVisitorNotes] = useState<any[]>([]);
 
+  // EXP Dashboard States
+  const [isExpDashboardOpen, setIsExpDashboardOpen] = useState(false);
+  const [expFilterDays, setExpFilterDays] = useState<number>(30); // เริ่มต้นที่ 30 วัน
+
   const fetchMedicines = async () => { 
     try { 
       const { data, error } = await supabase.from("medicines").select(`*, medicine_lots (*)`).order("id", { ascending: false }); 
@@ -919,6 +923,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           </div>
           <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto mt-2 xl:mt-0">
             <button onClick={() => setIsVisitorMainModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><MessageSquareText size={16} /> โน้ตผู้มาเยือน</button>
+            <button onClick={() => setIsExpDashboardOpen(true)} className="flex items-center justify-center gap-1.5 bg-rose-50/80 text-rose-700 border border-rose-200/50 hover:bg-rose-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><CalendarDays size={16} /> เช็คยาใกล้ EXP</button>
             <button onClick={() => setIsQRModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-indigo-50/80 text-indigo-700 border border-indigo-200/50 hover:bg-indigo-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><QrCode size={16} /> พิมพ์ QR</button>
             <button onClick={() => setIsReportModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-blue-50/80 text-blue-700 border border-blue-200/50 hover:bg-blue-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><FileText size={16} /> พิมพ์รายงาน</button>
             <button onClick={() => setIsImportModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Upload size={16} /> นำเข้า</button>
@@ -996,6 +1001,101 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
             </div>
           </div>
         </div>
+
+        {/* Modal: EXP Dashboard */}
+        {isExpDashboardOpen && (
+          <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[80]">
+            <div className="bg-white/95 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-3xl p-6 relative flex flex-col h-full max-h-[85vh]">
+                <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                  <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><CalendarDays className="text-rose-600" size={22}/> เช็คยาใกล้หมดอายุ (ที่ยังมีสต็อก)</h2>
+                  <button onClick={() => setIsExpDashboardOpen(false)} className="p-1 hover:bg-slate-100 rounded-xl"><X size={20} className="text-slate-400"/></button>
+                </div>
+
+                <div className="flex flex-wrap gap-2 py-4 border-b border-slate-100 shrink-0">
+                  {[
+                    { label: "6 เดือน (180 วัน)", val: 180 },
+                    { label: "2 เดือน (60 วัน)", val: 60 },
+                    { label: "1 เดือน (30 วัน)", val: 30 },
+                    { label: "15 วัน", val: 15 },
+                    { label: "7 วัน", val: 7 },
+                    { label: "2 วัน", val: 2 },
+                    { label: "หมดอายุวันนี้ (0 วัน)", val: 0 },
+                  ].map(tab => (
+                    <button
+                      key={tab.val}
+                      onClick={() => setExpFilterDays(tab.val as any)}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${expFilterDays === tab.val ? 'bg-rose-600 text-white border-rose-600 shadow-md' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex-1 overflow-y-auto py-4 space-y-3 pr-2">
+                  {(() => {
+                      const today = new Date();
+                      today.setHours(0,0,0,0);
+
+                      const matchedLots: any[] = [];
+                      medicines.forEach(med => {
+                        (med.medicine_lots || []).forEach((lot: any) => {
+                            if (lot.current_stock > 0 && lot.exp_date) {
+                              const expDate = new Date(lot.exp_date);
+                              expDate.setHours(0,0,0,0);
+                              const diffTime = expDate.getTime() - today.getTime();
+                              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                              let isMatch = false;
+                              if (expFilterDays === 180 && diffDays <= 180 && diffDays >= 0) isMatch = true;
+                              else if (expFilterDays === 60 && diffDays <= 60 && diffDays >= 0) isMatch = true;
+                              else if (expFilterDays === 30 && diffDays <= 30 && diffDays >= 0) isMatch = true;
+                              else if (expFilterDays === 15 && diffDays <= 15 && diffDays >= 0) isMatch = true;
+                              else if (expFilterDays === 7 && diffDays <= 7 && diffDays >= 0) isMatch = true;
+                              else if (expFilterDays === 2 && diffDays <= 2 && diffDays >= 0) isMatch = true;
+                              else if (expFilterDays === 0 && diffDays === 0) isMatch = true;
+
+                              if (isMatch) {
+                                  matchedLots.push({ ...med, lot, diffDays });
+                              }
+                            }
+                        });
+                      });
+
+                      matchedLots.sort((a, b) => a.diffDays - b.diffDays);
+
+                      if (matchedLots.length === 0) {
+                        return <div className="text-center py-12 text-slate-400 font-medium">ไม่พบรายการยาที่ใกล้หมดอายุในเงื่อนไขนี้ 🎉</div>;
+                      }
+
+                      return matchedLots.map((item, idx) => {
+                        const fullPacks = Math.floor(item.lot.current_stock / item.lot.pack_size);
+                        const remainder = item.lot.current_stock % item.lot.pack_size;
+                        const unitStr = item.lot.unit_name === "'s" ? "เม็ด" : item.lot.unit_name;
+
+                        return (
+                          <div key={`${item.id}-${item.lot.id}-${idx}`} className="flex flex-col md:flex-row md:justify-between md:items-center bg-white border border-rose-100 p-4 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+                              <div className="mb-2 md:mb-0">
+                                <div className="font-extrabold text-slate-800 text-sm md:text-base">{item.name} <span className="text-xs font-normal text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full ml-1">ตู้: {getCategoryName(item.cabinet_category)}</span></div>
+                                <div className="text-xs text-slate-600 mt-1.5 font-medium">
+                                    คงเหลือ: <span className="font-bold text-emerald-600">{fullPacks > 0 ? `${fullPacks} กล่อง × ${item.lot.pack_size} ${unitStr}` : ''} {remainder > 0 ? `(เศษ ${remainder} ${unitStr})` : ''}</span> <span className="text-blue-500 ml-1">(รวม {item.lot.current_stock} {unitStr})</span>
+                                </div>
+                                <div className="text-[11px] font-bold text-rose-600 mt-1.5 flex items-center gap-1">
+                                    <CalendarDays size={12}/> วันหมดอายุ (EXP): {item.lot.exp_date}
+                                </div>
+                              </div>
+                              <div className="shrink-0 text-left md:text-right">
+                                <span className={`px-4 py-1.5 rounded-full text-xs font-bold shadow-sm inline-block ${item.diffDays <= 7 ? 'bg-red-500 text-white animate-pulse border border-red-600' : 'bg-amber-100 text-amber-800 border border-amber-200'}`}>
+                                    {item.diffDays === 0 ? 'หมดอายุวันนี้!' : `เหลืออีก ${item.diffDays} วัน`}
+                                </span>
+                              </div>
+                          </div>
+                        );
+                      });
+                  })()}
+                </div>
+            </div>
+          </div>
+        )}
 
         {/* Edit Category Name Modal */}
         {editingCategoryId !== null && (
