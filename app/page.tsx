@@ -59,27 +59,12 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   
   const [isStaffAdminModalOpen, setIsStaffAdminModalOpen] = useState(false); const [newStaffNameInput, setNewStaffNameInput] = useState(""); const [staffRows, setStaffRows] = useState<any[]>([]);
   
-  // Visitor Note Main states
-  const [isVisitorMainModalOpen, setIsVisitorMainModalOpen] = useState(false); 
-  const [visitorSearchTerm, setVisitorSearchTerm] = useState("");
-  const [visitorMedId, setVisitorMedId] = useState(""); 
-  const [visitorLotId, setVisitorLotId] = useState(""); 
-  const [visitorInputMode, setVisitorInputMode] = useState<'base' | 'pack'>('base');
-  const [visitorAmount, setVisitorAmount] = useState(""); 
-  const [visitorPackCount, setVisitorPackCount] = useState("");
-  const [visitorName, setVisitorName] = useState(""); 
-  const [visitorSubmitting, setVisitorSubmitting] = useState(false);
-
+  const [isVisitorMainModalOpen, setIsVisitorMainModalOpen] = useState(false); const [visitorSearchTerm, setVisitorSearchTerm] = useState(""); const [visitorMedId, setVisitorMedId] = useState(""); const [visitorLotId, setVisitorLotId] = useState(""); const [visitorInputMode, setVisitorInputMode] = useState<'base' | 'pack'>('base'); const [visitorAmount, setVisitorAmount] = useState(""); const [visitorPackCount, setVisitorPackCount] = useState(""); const [visitorName, setVisitorName] = useState(""); const [visitorSubmitting, setVisitorSubmitting] = useState(false);
   const [visitorNotes, setVisitorNotes] = useState<any[]>([]);
 
   const fetchMedicines = async () => { try { const { data, error } = await supabase.from("medicines").select(`*, medicine_lots (*)`).order("id", { ascending: false }); if (error) throw error; if (data) setMedicines(data); const { data: txData } = await supabase.from("stock_transactions").select("*").in("action", ["out","in"]); if (txData) setAllTransactions(txData); } catch (error) { console.error(error); } finally { setLoading(false); } };
   const fetchCategories = async () => { try { const { data, error } = await supabase.from("cabinet_categories").select("*").order("id"); if (error) throw error; if (data && data.length > 0) setCategoriesList(data); } catch (error) { console.error(error); } };
-  const fetchVisitorNotes = async () => { 
-    try { 
-      const { data } = await supabase.from("stock_transactions").select("*").eq("status", "visitor_note").order("created_at", { ascending: false }); 
-      if (data) setVisitorNotes(data); 
-    } catch (error) { console.error(error); } 
-  };
+  const fetchVisitorNotes = async () => { try { const { data } = await supabase.from("stock_transactions").select("*").eq("status", "visitor_note").order("created_at", { ascending: false }); if (data) setVisitorNotes(data); } catch (error) { console.error(error); } };
   const fetchStaffRows = async () => { try { const { data } = await supabase.from("staff_accounts").select("*").order("name"); if (data) setStaffRows(data); } catch (e) {} };
 
   useEffect(() => { fetchMedicines(); fetchCategories(); fetchVisitorNotes(); fetchStaffRows(); const savedCat = localStorage.getItem(`saved_cat_${session.id}`); if (savedCat) setSelectedCategory(savedCat === "all" ? "all" : Number(savedCat)); }, []);
@@ -90,127 +75,28 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const handleRenameCategory = async (e: React.FormEvent) => { e.preventDefault(); if (editingCategoryId === null) return; const trimmed = categoryNameInput.trim(); if (!trimmed) return; try { const { error } = await supabase.from("cabinet_categories").update({ name: trimmed }).eq("id", editingCategoryId); if (error) throw error; fetchCategories(); setEditingCategoryId(null); setCategoryNameInput(""); alert("เปลี่ยนชื่อตู้ยาสำเร็จ!"); } catch (error: any) { alert("บันทึกชื่อหมวดหมู่ไม่สำเร็จ: " + error.message); } };
   const getCategoryName = (id: string | number) => { const cat = categoriesList?.find(c => String(c.id) === String(id)); return cat ? cat.name : id; };
 
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault(); setPwdError("");
-    if (newPwd.length < 4) return setPwdError("รหัสผ่านใหม่ต้องมีอย่างน้อย 4 ตัวอักษร");
-    if (newPwd !== newPwd2) return setPwdError("รหัสผ่านใหม่ไม่ตรงกัน");
-    setIsSubmitting(true);
-    try {
-      const oldHash = await sha256Hex(oldPwd);
-      const { data } = await supabase.from("staff_accounts").select("password_hash").eq("id", session.id).single();
-      if (data?.password_hash !== oldHash) { setIsSubmitting(false); return setPwdError("รหัสผ่านเดิมไม่ถูกต้อง"); }
-      const newHash = await sha256Hex(newPwd);
-      await supabase.from("staff_accounts").update({ password_hash: newHash }).eq("id", session.id);
-      alert("เปลี่ยนรหัสผ่านสำเร็จ!"); setIsChangePwdModalOpen(false); setOldPwd(""); setNewPwd(""); setNewPwd2("");
-    } catch (err: any) { setPwdError("เกิดข้อผิดพลาด: " + err.message); } finally { setIsSubmitting(false); }
-  }
+  const handleChangePassword = async (e: React.FormEvent) => { e.preventDefault(); setPwdError(""); if (newPwd.length < 4) return setPwdError("รหัสผ่านใหม่ต้องมีอย่างน้อย 4 ตัวอักษร"); if (newPwd !== newPwd2) return setPwdError("รหัสผ่านใหม่ไม่ตรงกัน"); setIsSubmitting(true); try { const oldHash = await sha256Hex(oldPwd); const { data } = await supabase.from("staff_accounts").select("password_hash").eq("id", session.id).single(); if (data?.password_hash !== oldHash) { setIsSubmitting(false); return setPwdError("รหัสผ่านเดิมไม่ถูกต้อง"); } const newHash = await sha256Hex(newPwd); await supabase.from("staff_accounts").update({ password_hash: newHash }).eq("id", session.id); alert("เปลี่ยนรหัสผ่านสำเร็จ!"); setIsChangePwdModalOpen(false); setOldPwd(""); setNewPwd(""); setNewPwd2(""); } catch (err: any) { setPwdError("เกิดข้อผิดพลาด: " + err.message); } finally { setIsSubmitting(false); } }
+  const handleAdminResetStaffPwd = async (staffId: string, staffName: string) => { const p = prompt(`ระบุรหัสผ่านใหม่สำหรับ ${staffName}:`); if (!p || p.length < 4) return alert("รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร"); try { const hash = await sha256Hex(p); const { error } = await supabase.from("staff_accounts").update({ password_hash: hash }).eq("id", staffId); if (error) throw error; alert(`เปลี่ยนรหัสผ่านของ ${staffName} สำเร็จ!`); fetchStaffRows(); } catch (e: any) { alert("ไม่สำเร็จ: " + e.message); } };
+  const handleAdminDeleteStaff = async (staffId: string, staffName: string) => { if (staffName === "Admin") return alert("ไม่สามารถลบบัญชี Admin หลักได้"); if (!confirm(`ยืนยันการลบผู้ใช้ "${staffName}" ออกจากระบบ?`)) return; try { const { error } = await supabase.from("staff_accounts").delete().eq("id", staffId); if (error) throw error; alert(`ลบผู้ใช้ ${staffName} สำเร็จ!`); await fetchStaffRows(); refreshStaffList(); } catch (e: any) { alert("ลบไม่สำเร็จ: " + e.message); } };
+  const handleAdminAddStaff = async (e: React.FormEvent) => { e.preventDefault(); const name = newStaffNameInput.trim(); if (!name) return; try { const { error } = await supabase.from("staff_accounts").insert([{ name, password_hash: await sha256Hex("1234"), is_central: false }]); if (error) throw error; alert(`เพิ่มเจ้าหน้าที่ ${name} สำเร็จ! (รหัสผ่านเริ่มต้น: 1234)`); setNewStaffNameInput(""); await fetchStaffRows(); refreshStaffList(); } catch (e: any) { alert("เพิ่มไม่สำเร็จ: " + e.message); } };
 
-  const handleAdminResetStaffPwd = async (staffId: string, staffName: string) => {
-    const p = prompt(`ระบุรหัสผ่านใหม่สำหรับ ${staffName}:`);
-    if (!p || p.length < 4) return alert("รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร");
-    try {
-      const hash = await sha256Hex(p);
-      const { error } = await supabase.from("staff_accounts").update({ password_hash: hash }).eq("id", staffId);
-      if (error) throw error;
-      alert(`เปลี่ยนรหัสผ่านของ ${staffName} สำเร็จ!`);
-      fetchStaffRows();
-    } catch (e: any) { alert("ไม่สำเร็จ: " + e.message); }
-  };
-
-  const handleAdminDeleteStaff = async (staffId: string, staffName: string) => {
-    if (staffName === "Admin") return alert("ไม่สามารถลบบัญชี Admin หลักได้");
-    if (!confirm(`ยืนยันการลบผู้ใช้ "${staffName}" ออกจากระบบ?`)) return;
-    try {
-      const { error } = await supabase.from("staff_accounts").delete().eq("id", staffId);
-      if (error) throw error;
-      alert(`ลบผู้ใช้ ${staffName} สำเร็จ!`);
-      await fetchStaffRows();
-      refreshStaffList();
-    } catch (e: any) { alert("ลบไม่สำเร็จ: " + e.message); }
-  };
-
-  const handleAdminAddStaff = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const name = newStaffNameInput.trim();
-    if (!name) return;
-    try {
-      const { error } = await supabase.from("staff_accounts").insert([{ name, password_hash: await sha256Hex("1234"), is_central: false }]);
-      if (error) throw error;
-      alert(`เพิ่มเจ้าหน้าที่ ${name} สำเร็จ! (รหัสผ่านเริ่มต้น: 1234)`);
-      setNewStaffNameInput("");
-      await fetchStaffRows();
-      refreshStaffList();
-    } catch (e: any) { alert("เพิ่มไม่สำเร็จ: " + e.message); }
-  };
-
-  const handleAcknowledgeNote = async (id: string) => {
-    try {
-      const { error } = await supabase.from("stock_transactions").update({ status: "visitor_acknowledged" }).eq("id", id);
-      if (error) throw error;
-      setVisitorNotes(prev => prev.filter(n => n.id !== id));
-    } catch (e: any) { alert("เกิดข้อผิดพลาด: " + e.message); }
-  }
+  const handleAcknowledgeNote = async (id: string) => { try { const { error } = await supabase.from("stock_transactions").update({ status: "visitor_acknowledged" }).eq("id", id); if (error) throw error; setVisitorNotes(prev => prev.filter(n => n.id !== id)); } catch (e: any) { alert("เกิดข้อผิดพลาด: " + e.message); } }
 
   const handleVisitorMainSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!visitorMedId || !visitorLotId || !visitorName) return alert("กรุณากรอกข้อมูลให้ครบถ้วน");
-    
-    let totalItems = 0;
-    const med = medicines.find(m => m.id.toString() === visitorMedId);
-    const lot = (med?.medicine_lots || []).find((l: any) => l.id.toString() === visitorLotId);
-    if (!lot) return alert("ไม่พบข้อมูลล็อต");
-
-    if (visitorInputMode === 'base') {
-      totalItems = parseInt(visitorAmount);
-      if (!totalItems || totalItems <= 0) return alert("กรุณาระบุจำนวนให้ถูกต้อง");
-    } else {
-      const packs = parseFloat(visitorPackCount);
-      if (!packs || packs <= 0) return alert("กรุณาระบุจำนวนกล่องให้ถูกต้อง");
-      totalItems = Math.round(packs * lot.pack_size);
-    }
-
+    e.preventDefault(); if (!visitorMedId || !visitorLotId || !visitorName) return alert("กรุณากรอกข้อมูลให้ครบถ้วน");
+    let totalItems = 0; const med = medicines.find(m => m.id.toString() === visitorMedId); const lot = (med?.medicine_lots || []).find((l: any) => l.id.toString() === visitorLotId); if (!lot) return alert("ไม่พบข้อมูลล็อต");
+    if (visitorInputMode === 'base') { totalItems = parseInt(visitorAmount); if (!totalItems || totalItems <= 0) return alert("กรุณาระบุจำนวนให้ถูกต้อง"); } else { const packs = parseFloat(visitorPackCount); if (!packs || packs <= 0) return alert("กรุณาระบุจำนวนกล่องให้ถูกต้อง"); totalItems = Math.round(packs * lot.pack_size); }
     setVisitorSubmitting(true);
-    try {
-      await supabase.from("stock_transactions").insert([{
-        medicine_id: String(visitorMedId), lot_id: String(visitorLotId), exp_date: lot.exp_date,
-        action: 'out', amount: totalItems, staff_name: visitorName,
-        status: 'visitor_note'
-      }]);
-      alert("บันทึกโน้ตสำเร็จเรียบร้อย!");
-      setIsVisitorMainModalOpen(false);
-      setVisitorMedId(""); setVisitorLotId(""); setVisitorAmount(""); setVisitorPackCount(""); setVisitorName(""); setVisitorSearchTerm("");
-      fetchVisitorNotes();
-    } catch (error: any) { alert("บันทึกไม่สำเร็จ: " + error.message); }
-    finally { setVisitorSubmitting(false); }
+    try { await supabase.from("stock_transactions").insert([{ medicine_id: String(visitorMedId), lot_id: String(visitorLotId), exp_date: lot.exp_date, action: 'out', amount: totalItems, staff_name: visitorName, status: 'visitor_note' }]); alert("บันทึกโน้ตสำเร็จเรียบร้อย!"); setIsVisitorMainModalOpen(false); setVisitorMedId(""); setVisitorLotId(""); setVisitorAmount(""); setVisitorPackCount(""); setVisitorName(""); setVisitorSearchTerm(""); fetchVisitorNotes(); } catch (error: any) { alert("บันทึกไม่สำเร็จ: " + error.message); } finally { setVisitorSubmitting(false); }
   };
 
   const handleImportExcel = async () => {
-    if (!importText.trim()) return alert("กรุณาวางข้อมูล CSV หรือข้อความที่ต้องการนำเข้า");
-    setImporting(true);
+    if (!importText.trim()) return alert("กรุณาวางข้อมูล CSV หรือข้อความที่ต้องการนำเข้า"); setImporting(true);
     try {
-      const lines = importText.trim().split("\n");
-      let count = 0;
-      for (let line of lines) {
-        const parts = line.split(",").map(p => p.trim());
-        if (parts.length >= 1 && parts[0]) {
-          const name = parts[0];
-          const hosxp_icode = parts[1] || "";
-          const note = parts[2] || "";
-          const cabinet_category = parts[3] || "1";
-          const min_stock = parseInt(parts[4]) || 0;
-
-          await supabase.from("medicines").insert([{
-            name, hosxp_icode, note, cabinet_category, min_stock, is_available: true
-          }]);
-          count++;
-        }
-      }
-      alert(`นำเข้าสำเร็จ ${count} รายการ!`);
-      setIsImportModalOpen(false);
-      setImportText("");
-      fetchMedicines();
-    } catch (e: any) { alert("นำเข้าไม่สำเร็จ: " + e.message); }
-    finally { setImporting(false); }
+      const lines = importText.trim().split("\n"); let count = 0;
+      for (let line of lines) { const parts = line.split(",").map(p => p.trim()); if (parts.length >= 1 && parts[0]) { const name = parts[0]; const hosxp_icode = parts[1] || ""; const note = parts[2] || ""; const cabinet_category = parts[3] || "1"; const min_stock = parseInt(parts[4]) || 0; await supabase.from("medicines").insert([{ name, hosxp_icode, note, cabinet_category, min_stock, is_available: true }]); count++; } }
+      alert(`นำเข้าสำเร็จ ${count} รายการ!`); setIsImportModalOpen(false); setImportText(""); fetchMedicines();
+    } catch (e: any) { alert("นำเข้าไม่สำเร็จ: " + e.message); } finally { setImporting(false); }
   };
 
   const filteredMedicines = medicines.filter((med) => selectedCategory === "all" || String(med.cabinet_category) === String(selectedCategory)).filter((med) => { const term = searchTerm.trim().toLowerCase(); if (!term) return true; return ((med.name || "").toLowerCase().includes(term) || (med.hosxp_icode || "").toLowerCase().includes(term) || (med.note || "").toLowerCase().includes(term)); }).sort((a, b) => { if (sortOrder === 'alpha') return (a.name || "").localeCompare(b.name || "", "th"); return b.id - a.id; });
@@ -246,11 +132,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       await fetchMedicines(); setIsStockModalOpen(false); 
       if (isHistoryModalOpen && selectedMed) { 
         const { data: freshMed } = await supabase.from("medicines").select(`*, medicine_lots (*)`).eq("id", selectedMed.id).single(); 
-        if (freshMed) {
-            setHistoryMed(freshMed);
-            const { data: txs } = await supabase.from("stock_transactions").select("*").eq("medicine_id", String(selectedMed.id)).order("created_at", { ascending: false });
-            setHistoryRows(txs || []);
-        }
+        if (freshMed) { setHistoryMed(freshMed); const { data: txs } = await supabase.from("stock_transactions").select("*").eq("medicine_id", String(selectedMed.id)).order("created_at", { ascending: false }); setHistoryRows(txs || []); }
       }
     } catch (error: any) { alert("อัปเดตสต็อกไม่สำเร็จ: " + error.message); } finally { setIsSubmitting(false); }
   };
@@ -262,33 +144,143 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     if (!confirm("ยืนยันการนำรายการรับล่วงหน้านี้ เข้าสต็อกจริงใช่หรือไม่?")) return; 
     try { 
       const lot = (historyMed ? historyMed.medicine_lots : medicines.find(m => m.id.toString() === tx.medicine_id)?.medicine_lots || []).find((l: any) => l.id.toString() === tx.lot_id?.toString()); 
-      if (lot) { 
-        const { error: lotErr } = await supabase.from("medicine_lots").update({ current_stock: lot.current_stock + tx.amount }).eq("id", lot.id); 
-        if (lotErr) throw lotErr; 
-      } 
+      if (lot) { const { error: lotErr } = await supabase.from("medicine_lots").update({ current_stock: lot.current_stock + tx.amount }).eq("id", lot.id); if (lotErr) throw lotErr; } 
       const appendedNote = tx.edit_note ? `${tx.edit_note} | อนุมัติโดย ${session.name}` : `อนุมัติโดย ${session.name}`; 
       await supabase.from("stock_transactions").update({ status: 'completed', edit_note: appendedNote }).eq("id", tx.id); 
       await fetchMedicines(); 
-      if (historyMed) {
-        const { data: freshMed } = await supabase.from("medicines").select(`*, medicine_lots (*)`).eq("id", historyMed.id).single(); 
-        if (freshMed) {
-            setHistoryMed(freshMed);
-            const { data: txs } = await supabase.from("stock_transactions").select("*").eq("medicine_id", String(historyMed.id)).order("created_at", { ascending: false });
-            setHistoryRows(txs || []);
-        }
-      }
-      if (setBtnDone) setBtnDone(true);
-      alert("นำยอดเข้าสต็อกสำเร็จ"); 
+      if (historyMed) { const { data: freshMed } = await supabase.from("medicines").select(`*, medicine_lots (*)`).eq("id", historyMed.id).single(); if (freshMed) { setHistoryMed(freshMed); const { data: txs } = await supabase.from("stock_transactions").select("*").eq("medicine_id", String(historyMed.id)).order("created_at", { ascending: false }); setHistoryRows(txs || []); } }
+      if (setBtnDone) setBtnDone(true); alert("นำยอดเข้าสต็อกสำเร็จ"); 
     } catch (e: any) { alert("เกิดข้อผิดพลาด: " + e.message); } 
   };
 
   const formatHistoryDate = (iso: string) => { try { return new Date(iso).toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return iso; } };
   const calculateMedStats = (med: any) => { if (!globalStartDate || !globalEndDate) return { totalUsage: 0, target1Week: 0, target2Weeks: 0, daysDiff: 0 }; const start = new Date(globalStartDate); const end = new Date(globalEndDate); start.setHours(0, 0, 0, 0); end.setHours(23, 59, 59, 999); let daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)); if (daysDiff < 1) daysDiff = 1; const medTx = allTransactions.filter(tx => { const txDate = new Date(tx.created_at); return String(tx.medicine_id) === String(med.id) && txDate >= start && txDate <= end && tx.status === 'completed'; }); const totalUsage = medTx.reduce((sum, tx) => sum + tx.amount, 0); const dailyRate = totalUsage / daysDiff; return { totalUsage, target1Week: Math.ceil(dailyRate * 7 * 1.15), target2Weeks: Math.ceil(dailyRate * 14 * 1.15), daysDiff }; };
 
-  const handleGenerateReport = async () => { setIsGeneratingReport(true); try { let query = supabase.from("stock_transactions").select("*").eq("status", "completed").order("created_at", { ascending: false }); if (reportTargetId !== "all") query = query.eq("medicine_id", reportTargetId); const { data: txData, error } = await query; if (error) throw error; const grouped: any = {}; const medsToProcess = medicines.filter(m => reportTargetCategory === "all" || String(m.cabinet_category) === String(reportTargetCategory)).filter(m => reportTargetId === "all" || m.id.toString() === reportTargetId); medsToProcess.forEach(med => { let currentTotalStock = (med.medicine_lots || []).reduce((sum: number, lot: any) => sum + lot.current_stock, 0); const medTxs = (txData || []).filter(tx => tx.medicine_id.toString() === med.id.toString()); let runningBal = currentTotalStock; const processedTxs = medTxs.map(tx => { const balanceAfter = runningBal; if (tx.action === 'in') runningBal -= tx.amount; if (tx.action === 'out') runningBal += tx.amount; const lotInfo = (med.medicine_lots || []).find((l: any) => l.id.toString() === tx.lot_id?.toString()); const pUnit = lotInfo?.unit_name || 'หน่วย'; const pSize = lotInfo?.pack_size || 100; const formatPrintPack = (amt: number) => { if(pSize <= 1 || amt === 0) return `${amt} ${pUnit}`; const p = Math.floor(amt / pSize); const r = amt % pSize; return p === 0 ? `${r} ${pUnit}` : `${p} กล่อง${r > 0 ? ` เศษ ${r} ${pUnit}` : ''}`; }; return { ...tx, balanceAfter, pUnit, lotExp: tx.exp_date, amountText: formatPrintPack(tx.amount), balanceText: formatPrintPack(balanceAfter) }; }); grouped[med.id] = { medName: med.name, hosxp: med.hosxp_icode, note: med.note, transactions: processedTxs.reverse() }; }); setPrintData(grouped); setShowPrintView(true); setIsReportModalOpen(false); } catch(e: any) { alert("เกิดข้อผิดพลาดในการดึงข้อมูลรายงาน: " + e.message); } finally { setIsGeneratingReport(false); } };
+  const handleGenerateReport = async () => { 
+    setIsGeneratingReport(true); 
+    try { 
+      let query = supabase.from("stock_transactions").select("*").eq("status", "completed").order("created_at", { ascending: true }); 
+      if (reportTargetId !== "all") query = query.eq("medicine_id", reportTargetId); 
+      const { data: txData, error } = await query; 
+      if (error) throw error; 
+      
+      const grouped: any = {}; 
+      const medsToProcess = medicines.filter(m => reportTargetCategory === "all" || String(m.cabinet_category) === String(reportTargetCategory)).filter(m => reportTargetId === "all" || m.id.toString() === reportTargetId); 
+      
+      medsToProcess.forEach(med => { 
+        const medTxs = (txData || []).filter(tx => tx.medicine_id.toString() === med.id.toString()); 
+        let runningBal = 0; 
+        
+        // Dictionary เก็บสต็อกที่เหลืออยู่แยกตามล็อต (เพื่อทำ breakdown ในรายงาน)
+        let lotBalances: Record<string, { exp: string, qty: number, packSize: number, unitName: string }> = {};
+
+        const processedTxs = medTxs.map(tx => { 
+          const lotId = tx.lot_id?.toString() || 'unknown';
+          const lotExp = tx.exp_date || 'N/A';
+          const lotInfo = (med.medicine_lots || []).find((l: any) => l.id.toString() === lotId);
+          const pSize = lotInfo?.pack_size || (med.medicine_lots?.[0]?.pack_size || 1);
+          const pUnit = lotInfo?.unit_name || 'หน่วย';
+
+          if (!lotBalances[lotId]) {
+            lotBalances[lotId] = { exp: lotExp, qty: 0, packSize: pSize, unitName: pUnit };
+          }
+
+          if (tx.action === 'in') { 
+            runningBal += tx.amount; 
+            lotBalances[lotId].qty += tx.amount;
+          } 
+          else if (tx.action === 'out') { 
+            runningBal -= tx.amount; 
+            lotBalances[lotId].qty -= tx.amount;
+          } 
+          
+          const formatPrintPack = (amt: number, size: number, unit: string) => { 
+            if(size <= 1 || amt === 0) return `${amt} ${unit}`; 
+            const p = Math.floor(amt / size); const r = amt % size; 
+            return p === 0 ? `${r} ${unit}` : `${p} กล่อง${r > 0 ? ` เศษ ${r} ${unit}` : ''}`; 
+          }; 
+          
+          // สร้างข้อความแจกแจงยอดคงเหลือแต่ละ EXP (เฉพาะที่ยอด > 0)
+          const activeLots = Object.values(lotBalances).filter(l => l.qty > 0);
+          let lotBreakdown: string[] = [];
+          if (activeLots.length > 0) {
+            lotBreakdown = activeLots.map(l => `EXP ${l.exp}: ${formatPrintPack(l.qty, l.packSize, l.unitName)}`);
+          }
+
+          return { 
+            ...tx, 
+            balanceAfter: runningBal, 
+            amountText: formatPrintPack(tx.amount, pSize, pUnit), 
+            balanceText: formatPrintPack(runningBal, pSize, pUnit),
+            lotBreakdown 
+          }; 
+        }); 
+        
+        grouped[med.id] = { 
+          medName: med.name, hosxp: med.hosxp_icode, note: med.note, 
+          transactions: processedTxs.reverse() 
+        }; 
+      }); 
+      
+      setPrintData(grouped); setShowPrintView(true); setIsReportModalOpen(false); 
+    } catch(e: any) { alert("เกิดข้อผิดพลาดในการดึงข้อมูลรายงาน: " + e.message); } finally { setIsGeneratingReport(false); } 
+  };
+  
   const handleGenerateQRPrint = () => { let medsToPrint = medicines; if (qrTargetCategory !== "all") medsToPrint = medsToPrint.filter(m => String(m.cabinet_category) === String(qrTargetCategory)); if (qrTargetId !== "all") medsToPrint = medsToPrint.filter(m => m.id.toString() === qrTargetId); setQrPrintData(medsToPrint); setShowQRPrintView(true); setIsQRModalOpen(false); };
 
-  if (showPrintView) return ( <div className="bg-white min-h-screen text-black print:p-0 p-8"><div className="max-w-5xl mx-auto"><div className="print:hidden flex justify-between mb-6 bg-gray-100 p-4 rounded-xl"><div><h1 className="text-xl font-bold">ตัวอย่างก่อนพิมพ์รายงาน</h1></div><div className="flex gap-3"><button onClick={() => setShowPrintView(false)} className="px-4 py-2 border rounded-lg font-medium">ปิด</button><button onClick={() => window.print()} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium flex gap-2"><Printer size={18}/> พิมพ์ PDF</button></div></div><div className="print-content">{Object.values(printData).map((medData: any) => (<div key={medData.medName} style={{ pageBreakAfter: 'always' }} className="mb-10 pb-4"><h1 className="text-2xl font-bold text-center mb-2">รายงานประวัติการใช้ยา</h1><p className="text-center text-sm text-gray-600 mb-6">พิมพ์วันที่: {new Date().toLocaleString("th-TH")}</p><div className="mb-4 border-b-2 border-black pb-2"><h2 className="text-xl font-bold text-black">{medData.medName}</h2><div className="text-sm text-black">รหัส HosXP: {medData.hosxp || "-"} | หมายเหตุ: {medData.note || "-"}</div></div>{medData.transactions.length === 0 ? <p className="text-sm text-gray-500 italic py-4">ไม่มีประวัติการทำรายการ</p> : (<table className="w-full text-sm text-left border-collapse border border-gray-400"><thead><tr className="bg-gray-100"><th className="border border-gray-400 p-2 text-black font-bold">วันที่ทำรายการ</th><th className="border border-gray-400 p-2 text-center text-black font-bold">รับเข้า</th><th className="border border-gray-400 p-2 text-center text-black font-bold">ตัดจ่าย</th><th className="border border-gray-400 p-2 text-center text-black font-bold">ยอดยกไป (คงเหลือ)</th><th className="border border-gray-400 p-2 text-black font-bold">ผู้ดำเนินการ</th><th className="border border-gray-400 p-2 text-black font-bold">หมายเหตุ (EXP)</th></tr></thead><tbody>{medData.transactions.map((tx: any) => (<tr key={tx.id} className="border border-gray-400"><td className="border border-gray-400 p-2 text-black">{formatHistoryDate(tx.created_at)}</td><td className="border border-gray-400 p-2 text-center text-black font-medium">{tx.action === 'in' ? tx.amountText : '-'}</td><td className="border border-gray-400 p-2 text-center text-black font-medium">{tx.action === 'out' ? tx.amountText : '-'}</td><td className="border border-gray-400 p-2 text-center text-black font-bold">{tx.balanceText}</td><td className="border border-gray-400 p-2 text-black">{tx.staff_name}</td><td className="border border-gray-400 p-2 text-black text-xs">EXP: {tx.lotExp} {tx.edit_note ? `[${tx.edit_note}]` : ''}</td></tr>))}</tbody></table>)}</div>))}</div></div></div> );
+  if (showPrintView) return ( 
+    <div className="bg-white min-h-screen text-black print:p-0 p-8">
+      <div className="max-w-5xl mx-auto">
+        <div className="print:hidden flex justify-between mb-6 bg-gray-100 p-4 rounded-xl"><div><h1 className="text-xl font-bold">ตัวอย่างก่อนพิมพ์รายงาน</h1></div><div className="flex gap-3"><button onClick={() => setShowPrintView(false)} className="px-4 py-2 border rounded-lg font-medium">ปิด</button><button onClick={() => window.print()} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium flex gap-2"><Printer size={18}/> พิมพ์ PDF</button></div></div>
+        <div className="print-content">
+          {Object.values(printData).map((medData: any) => (
+            <div key={medData.medName} style={{ pageBreakAfter: 'always' }} className="mb-10 pb-4">
+              <h1 className="text-2xl font-bold text-center mb-2">รายงานประวัติการใช้ยา</h1>
+              <p className="text-center text-sm text-gray-600 mb-6">พิมพ์วันที่: {new Date().toLocaleString("th-TH")}</p>
+              <div className="mb-4 border-b-2 border-black pb-2"><h2 className="text-xl font-bold text-black">{medData.medName}</h2><div className="text-sm text-black">รหัส HosXP: {medData.hosxp || "-"} | หมายเหตุ: {medData.note || "-"}</div></div>
+              {medData.transactions.length === 0 ? <p className="text-sm text-gray-500 italic py-4">ไม่มีประวัติการทำรายการ</p> : (
+                <table className="w-full text-sm text-left border-collapse border border-gray-400">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="border border-gray-400 p-2 text-black font-bold">วันที่ทำรายการ</th>
+                      <th className="border border-gray-400 p-2 text-center text-black font-bold">รับเข้า</th>
+                      <th className="border border-gray-400 p-2 text-center text-black font-bold">ตัดจ่าย</th>
+                      <th className="border border-gray-400 p-2 text-center text-black font-bold min-w-[160px]">ยอดยกไป (คงเหลือ)</th>
+                      <th className="border border-gray-400 p-2 text-black font-bold">ผู้ดำเนินการ</th>
+                      <th className="border border-gray-400 p-2 text-black font-bold">หมายเหตุ (EXP)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {medData.transactions.map((tx: any) => (
+                      <tr key={tx.id} className="border border-gray-400">
+                        <td className="border border-gray-400 p-2 text-black align-top">{formatHistoryDate(tx.created_at)}</td>
+                        <td className="border border-gray-400 p-2 text-center text-black font-medium align-top">{tx.action === 'in' ? tx.amountText : '-'}</td>
+                        <td className="border border-gray-400 p-2 text-center text-red-600 font-bold align-top">{tx.action === 'out' ? tx.amountText : '-'}</td>
+                        <td className="border border-gray-400 p-2 text-center align-top">
+                           <div className="text-black font-bold">{tx.balanceText}</div>
+                           {/* ส่วนแสดงการแจกแจงยอดแต่ละล็อต EXP */}
+                           {tx.lotBreakdown && tx.lotBreakdown.length > 0 && (
+                             <div className="text-[10px] text-gray-700 font-medium mt-1 pt-1 border-t border-gray-300 text-left w-fit mx-auto leading-tight whitespace-nowrap">
+                                {tx.lotBreakdown.map((txt: string, i: number) => (
+                                   <div key={i}>• {txt}</div>
+                                ))}
+                             </div>
+                           )}
+                        </td>
+                        <td className="border border-gray-400 p-2 text-black align-top">{tx.staff_name}</td>
+                        <td className="border border-gray-400 p-2 text-black text-xs align-top">EXP: {tx.lotExp} {tx.edit_note ? `[${tx.edit_note}]` : ''}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div> 
+  );
+  
   if (showQRPrintView) return ( <div className="bg-white min-h-screen text-black print:p-0 p-4"><div className="max-w-5xl mx-auto"><div className="print:hidden flex justify-between mb-6 bg-gray-100 p-4 rounded-xl"><h1 className="text-xl font-bold">พิมพ์ QR Code</h1><div className="flex gap-3"><button onClick={() => setShowQRPrintView(false)} className="px-4 py-2 border rounded-lg">ปิด</button><button onClick={() => window.print()} className="px-4 py-2 bg-blue-600 text-white rounded-lg flex gap-2"><Printer size={18}/> พิมพ์</button></div></div><div className="grid grid-cols-2 md:grid-cols-4 gap-4">{qrPrintData.map((med) => (<div key={med.id} className="border-2 border-dashed border-gray-400 p-4 flex flex-col items-center justify-center text-center"><QRCodeSVG value={`${typeof window !== 'undefined' ? window.location.origin : ''}/medicine/${med.id}`} size={100} /><div className="mt-3 font-bold text-sm leading-tight text-black">{med.name}</div></div>))}</div></div></div> );
 
   return (
@@ -651,7 +643,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                     {stockInMode === 'existing' ? (
                       <div><label className="block text-sm font-bold text-emerald-700 mb-1.5">เลือกล็อต (EXP) *</label><select required className="w-full bg-white border border-emerald-200/50 rounded-xl p-3 font-medium outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm" value={selectedLotId} onChange={(e) => { setSelectedLotId(e.target.value); const l = (selectedMed.medicine_lots || []).find((x: any) => String(x.id) === e.target.value); if(l) { setStockPackSize(l.pack_size.toString()); setStockUnitName(l.unit_name); }}}><option value="">-- กรุณาเลือกล็อต --</option>{(selectedMed.medicine_lots || []).map((lot: any) => { const packs = Math.floor(lot.current_stock / lot.pack_size); const remainder = lot.current_stock % lot.pack_size; const unitString = lot.unit_name === "'s" ? "'" : ` ${lot.unit_name}`; const remainderText = remainder > 0 ? ` เศษ ${remainder}` : ""; return <option key={lot.id} value={lot.id}>EXP: {lot.exp_date} (เหลือ: {packs}x{lot.pack_size}{unitString}{remainderText})</option> })}</select></div>
                     ) : (
-                      <><div className="grid grid-cols-2 gap-3"><div className="col-span-2"><label className="block text-sm font-bold text-emerald-700 mb-1.5">วันหมดอายุ (EXP) *</label><input type="date" required className="w-full bg-white border border-emerald-200/50 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm" value={stockExpDate} onChange={(e) => setStockExpDate(e.target.value)} /></div><div><label className="block text-sm font-bold text-emerald-700 mb-1.5">ขนาดบรรจุ / กล่อง</label><input type="number" required min="1" className="w-full bg-white border border-emerald-200/50 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm" value={stockPackSize} onChange={(e) => setStockPackSize(e.target.value)} /></div><div><label className="block text-sm font-bold text-emerald-700 mb-1.5">หน่วยนับ</label><select className="w-full bg-white border border-emerald-200/50 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm" value={stockUnitName} onChange={(e) => setStockUnitName(e.target.value)}><option value="'s">'s (เม็ด)</option><option value="vial">vial</option><option value="amp">amp</option><option value="bottle">bottle</option><option value="box">box</option></select></div></div></>
+                      <><div className="grid grid-cols-2 gap-3"><div className="col-span-2"><label className="block text-sm font-bold text-emerald-700 mb-1.5">วันหมดอายุ (EXP) *</label><input type="date" required className="w-full bg-white border border-emerald-200/50 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm" value={stockExpDate} onChange={(e) => setStockExpDate(e.target.value)} /></div><div><label className="block text-sm font-bold text-emerald-700 mb-1.5">ขนาดบรรจุ / กล่อง</label><input type="number" required min="1" className="w-full bg-white border border-emerald-200/50 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm" value={stockPackSize} onChange={(e) => setStockPackSize(e.target.value)} /></div><div><label className="block text-sm font-bold text-emerald-700 mb-1.5">หน่วยนับ</label><select className="w-full bg-white border border-emerald-200/50 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm" value={stockUnitName} onChange={(e) => setStockUnitName(e.target.value)}><option value="'s">'s (เม็ด)</option><option value="vial">vial</option><option value="amp">amp</option><option value="bottle">bottle</option><option value="box">box</option><option value="ชิ้น">ชิ้น</option><option value="อัน">อัน</option><option value="กระปุก">กระปุก</option><option value="ตลับ">ตลับ</option></select></div></div></>
                     )}
                   </div>
                 ) : (
