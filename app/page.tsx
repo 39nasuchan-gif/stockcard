@@ -209,7 +209,7 @@ function LoginScreen({ onLogin, staffList }: { onLogin: (s: Session) => void, st
   );
 }
 
-function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { session: Session; onLogout: () => void; staffList: string[]; refreshStaffList: () => void }) {
+function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { session: Session | null; onLogout: () => void; staffList: string[]; refreshStaffList: () => void }) {
   const [medicines, setMedicines] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true); 
   const [sortOrder, setSortOrder] = useState<'recent' | 'alpha'>('alpha');
@@ -244,10 +244,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const [historyMed, setHistoryMed] = useState<any>(null); 
   const [historyRows, setHistoryRows] = useState<any[]>([]); 
   const [allTransactions, setAllTransactions] = useState<any[]>([]);
-  
-  const [globalPeriodMode, setGlobalPeriodMode] = useState<'1m' | '2m' | '3m' | 'custom'>('1m'); 
-  const [globalStartDate, setGlobalStartDate] = useState(""); 
-  const [globalEndDate, setGlobalEndDate] = useState("");
   
   const [isReportModalOpen, setIsReportModalOpen] = useState(false); 
   const [reportTargetCategory, setReportTargetCategory] = useState<number | "all">("all"); 
@@ -291,6 +287,14 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const [isExpDashboardOpen, setIsExpDashboardOpen] = useState(false);
   const [expFilterDays, setExpFilterDays] = useState<number>(30); 
 
+  // State สำหรับฟอร์มโน้ตผู้มาเยือนในหน้าดีเทลยา (กรณีสแกน QR มาแบบไม่ได้ Login)
+  const [qrVisitorLotId, setQrVisitorLotId] = useState("");
+  const [qrVisitorInputMode, setQrVisitorInputMode] = useState<'base' | 'pack'>('base');
+  const [qrVisitorAmount, setQrVisitorAmount] = useState("");
+  const [qrVisitorPackCount, setQrVisitorPackCount] = useState("");
+  const [qrVisitorName, setQrVisitorName] = useState("");
+  const [qrVisitorSubmitting, setQrVisitorSubmitting] = useState(false);
+
   const fetchMedicines = async () => { 
     try { 
       const { data, error } = await supabase.from("medicines").select(`*, medicine_lots (*)`).order("id", { ascending: false }); 
@@ -298,16 +302,14 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       if (data) {
         setMedicines(data);
         
-        // ตรวจสอบและดักจับพารามิเตอร์ scan จาก QR Code ทันทีหลังจากข้อมูลยาโหลดเสร็จ
         if (typeof window !== 'undefined') {
            const params = new URLSearchParams(window.location.search);
            const scanId = params.get('scan');
            if (scanId) {
               const targetMed = data.find((m: any) => String(m.id) === String(scanId));
               if (targetMed) {
-                 openStockModal(targetMed, 'out');
+                 openHistoryModal(targetMed);
               }
-              // ล้างค่า URL scan ออกเพื่อไม่ให้เด้งซ้ำเวลาปิด Modal
               window.history.replaceState({}, document.title, window.location.pathname);
            }
         }
@@ -355,13 +357,17 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     fetchCategories(); 
     fetchVisitorNotes(); 
     fetchStaffRows(); 
-    const savedCat = localStorage.getItem(`saved_cat_${session.id}`); 
-    if (savedCat) setSelectedCategory(savedCat === "all" ? "all" : Number(savedCat)); 
+    if (session) {
+      const savedCat = localStorage.getItem(`saved_cat_${session.id}`); 
+      if (savedCat) setSelectedCategory(savedCat === "all" ? "all" : Number(savedCat)); 
+    }
   }, []);
 
   const handleSelectCategory = (catId: number | "all") => { 
     setSelectedCategory(catId); 
-    localStorage.setItem(`saved_cat_${session.id}`, String(catId)); 
+    if (session) {
+      localStorage.setItem(`saved_cat_${session.id}`, String(catId)); 
+    }
   };
 
   const handleAddCategory = async () => { 
@@ -395,6 +401,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
 
   const handleChangePassword = async (e: React.FormEvent) => { 
     e.preventDefault(); 
+    if (!session) return;
     setPwdError(""); 
     if (newPwd.length < 4) return setPwdError("รหัสผ่านใหม่ต้องมีอย่างน้อย 4 ตัวอักษร"); 
     if (newPwd !== newPwd2) return setPwdError("รหัสผ่านใหม่ไม่ตรงกัน"); 
@@ -473,6 +480,47 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     } catch (error: any) { alert("บันทึกไม่สำเร็จ: " + error.message); } finally { setVisitorSubmitting(false); }
   };
 
+  // Handler สำหรับบันทึกโน้ตผู้มาเยือนจากหน้าดีเทลยา (กรณีสแกน QR แบบไม่ได้ Login)
+  const handleQrVisitorSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!qrVisitorLotId || !qrVisitorName || !historyMed) return alert("กรุณากรอกข้อมูลให้ครบถ้วน");
+    let totalItems = 0;
+    const lot = (historyMed.medicine_lots || []).find((l: any) => l.id.toString() === qrVisitorLotId);
+    if (!lot) return alert("ไม่พบข้อมูลล็อต");
+    if (qrVisitorInputMode === 'base') {
+      totalItems = parseInt(qrVisitorAmount);
+      if (!totalItems || totalItems <= 0) return alert("กรุณาระบุจำนวนให้ถูกต้อง");
+    } else {
+      const packs = parseFloat(qrVisitorPackCount);
+      if (!packs || packs <= 0) return alert("กรุณาระบุจำนวนกล่องให้ถูกต้อง");
+      totalItems = Math.round(packs * lot.pack_size);
+    }
+    if (totalItems > lot.current_stock) return alert(`สต็อกไม่พอ! ต้องการเบิก ${totalItems} แต่มีแค่ ${lot.current_stock}`);
+    
+    setQrVisitorSubmitting(true);
+    try {
+      await supabase.from("stock_transactions").insert([{
+        medicine_id: String(historyMed.id),
+        lot_id: String(qrVisitorLotId),
+        exp_date: lot.exp_date,
+        action: 'out',
+        amount: totalItems,
+        staff_name: qrVisitorName,
+        status: 'visitor_note'
+      }]);
+      alert("บันทึกโน้ตผู้มาเยือนสำเร็จเรียบร้อย!");
+      setQrVisitorLotId(""); setQrVisitorAmount(""); setQrVisitorPackCount(""); setQrVisitorName("");
+      fetchVisitorNotes();
+      // รีเฟรชข้อมูลดีเทลยา
+      const { data: freshMed } = await supabase.from("medicines").select(`*, medicine_lots (*)`).eq("id", historyMed.id).single();
+      if (freshMed) setHistoryMed(freshMed);
+    } catch (error: any) {
+      alert("บันทึกไม่สำเร็จ: " + error.message);
+    } finally {
+      setQrVisitorSubmitting(false);
+    }
+  };
+
   const handleImportExcel = async () => {
     if (!importText.trim()) return alert("กรุณาวางข้อมูล CSV หรือข้อความที่ต้องการนำเข้า"); 
     setImporting(true);
@@ -546,6 +594,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
 
   const handleUpdateStock = async (e: React.FormEvent) => {
     e.preventDefault(); 
+    if (!session) return;
     let totalItems = 0; 
     setIsSubmitting(true);
     if (inputMode === 'base') { 
@@ -842,23 +891,38 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-white/70 backdrop-blur-xl p-4 md:p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/80">
           <div className="w-full xl:w-auto flex justify-between items-start md:items-center">
             <div><h1 className="text-2xl md:text-3xl font-extrabold text-slate-800 leading-tight tracking-tight">ระบบคลังยา <br className="md:hidden" /><span className="text-base md:text-2xl font-semibold text-slate-500 opacity-80">(จัดล็อต EXP)</span></h1></div>
-            <div className="text-right md:hidden"><div className="text-[10px] font-medium text-slate-700 flex items-center justify-end gap-1 bg-white/80 px-3 py-1.5 rounded-full border border-white shadow-sm"><User size={12} className="text-slate-400" /> {session.name}</div></div>
+            <div className="text-right md:hidden">
+              {session ? (
+                <div className="text-[10px] font-medium text-slate-700 flex items-center justify-end gap-1 bg-white/80 px-3 py-1.5 rounded-full border border-white shadow-sm"><User size={12} className="text-slate-400" /> {session.name}</div>
+              ) : (
+                <div className="text-[10px] font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-200">โหมดสแกน QR (ผู้มาเยือน)</div>
+              )}
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto mt-2 xl:mt-0">
-            <button onClick={() => setIsVisitorMainModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><MessageSquareText size={16} /> โน้ตผู้มาเยือน</button>
-            <button onClick={() => setIsExpDashboardOpen(true)} className="flex items-center justify-center gap-1.5 bg-rose-50/80 text-rose-700 border border-rose-200/50 hover:bg-rose-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><CalendarDays size={16} /> เช็คยาใกล้ EXP</button>
-            <button onClick={() => setIsQRModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-indigo-50/80 text-indigo-700 border border-indigo-200/50 hover:bg-indigo-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><QrCode size={16} /> พิมพ์ QR</button>
-            <button onClick={() => setIsReportModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-blue-50/80 text-blue-700 border border-blue-200/50 hover:bg-blue-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><FileText size={16} /> พิมพ์รายงาน</button>
-            <button onClick={() => setIsImportModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Upload size={16} /> นำเข้า</button>
-            <button onClick={openAddMedModal} className="flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-3.5 py-2 rounded-xl font-medium text-xs md:text-sm shadow-md shadow-emerald-200 transition-all"><Plus size={18} /> เพิ่มยา</button>
-            {session.name === "Admin" && (<button onClick={() => setIsStaffAdminModalOpen(true)} title="จัดการเจ้าหน้าที่" className="flex items-center gap-1.5 bg-purple-50/80 text-purple-700 border border-purple-200 hover:bg-purple-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Users size={16}/> จัดการเจ้าหน้าที่</button>)}
-            <button onClick={() => setIsChangePwdModalOpen(true)} title="เปลี่ยนรหัสผ่าน" className="p-2 bg-white/50 border border-white text-slate-500 rounded-xl hover:bg-blue-50 hover:text-blue-500 shadow-sm transition-all"><KeyRound size={18} /></button>
-            <button onClick={onLogout} title="ออกจากระบบ" className="p-2 bg-white/50 border border-white text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-500 shadow-sm transition-all"><LogOut size={18} /></button>
+            {session ? (
+              <>
+                <button onClick={() => setIsVisitorMainModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><MessageSquareText size={16} /> โน้ตผู้มาเยือน</button>
+                <button onClick={() => setIsExpDashboardOpen(true)} className="flex items-center justify-center gap-1.5 bg-rose-50/80 text-rose-700 border border-rose-200/50 hover:bg-rose-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><CalendarDays size={16} /> เช็คยาใกล้ EXP</button>
+                <button onClick={() => setIsQRModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-indigo-50/80 text-indigo-700 border border-indigo-200/50 hover:bg-indigo-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><QrCode size={16} /> พิมพ์ QR</button>
+                <button onClick={() => setIsReportModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-blue-50/80 text-blue-700 border border-blue-200/50 hover:bg-blue-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><FileText size={16} /> พิมพ์รายงาน</button>
+                <button onClick={() => setIsImportModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Upload size={16} /> นำเข้า</button>
+                <button onClick={openAddMedModal} className="flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-3.5 py-2 rounded-xl font-medium text-xs md:text-sm shadow-md shadow-emerald-200 transition-all"><Plus size={18} /> เพิ่มยา</button>
+                {session.name === "Admin" && (<button onClick={() => setIsStaffAdminModalOpen(true)} title="จัดการเจ้าหน้าที่" className="flex items-center gap-1.5 bg-purple-50/80 text-purple-700 border border-purple-200 hover:bg-purple-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Users size={16}/> จัดการเจ้าหน้าที่</button>)}
+                <button onClick={() => setIsChangePwdModalOpen(true)} title="เปลี่ยนรหัสผ่าน" className="p-2 bg-white/50 border border-white text-slate-500 rounded-xl hover:bg-blue-50 hover:text-blue-500 shadow-sm transition-all"><KeyRound size={18} /></button>
+                <button onClick={onLogout} title="ออกจากระบบ" className="p-2 bg-white/50 border border-white text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-500 shadow-sm transition-all"><LogOut size={18} /></button>
+              </>
+            ) : (
+              <div className="flex items-center justify-between w-full bg-amber-50 border border-amber-200 px-4 py-2 rounded-2xl text-xs font-bold text-amber-800">
+                <span>⚠️ เข้าสู่ระบบผ่าน QR Code (ผู้มาเยือน) - บันทึกได้เฉพาะโน้ตผู้มาเยือน</span>
+                <button onClick={onLogout} className="bg-white px-3 py-1 rounded-xl shadow-sm border border-amber-300 text-amber-900">เข้าสู่ระบบหลัก</button>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* แจ้งเตือนผู้มาเยือน */}
-        {(visitorNotes.length > 0) && (
+        {/* แจ้งเตือนผู้มาเยือน (เฉพาะเมื่อ Login) */}
+        {session && (visitorNotes.length > 0) && (
           <div className="bg-amber-50/80 backdrop-blur-xl rounded-3xl shadow-sm border border-amber-200/50 p-4 md:p-5 w-full transition-all">
              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3 border-b border-amber-200/50 pb-3">
                 <div className="flex items-center gap-2 text-sm font-bold text-amber-700">
@@ -913,10 +977,10 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
               return (
               <div key={cat.id} className={`flex items-center gap-0.5 rounded-2xl border px-1 transition-all ${activeClass}`}>
                 <button onClick={() => handleSelectCategory(cat.id)} className="pl-3 pr-2 py-2 text-sm">{cat.name}</button>
-                <button onClick={() => { setEditingCategoryId(cat.id); setCategoryNameInput(cat.name); }} className={`p-1 rounded-xl transition-colors ${selectedCategory === cat.id ? "text-slate-700" : "text-slate-400"}`}><Edit size={14} /></button>
+                {session && (<button onClick={() => { setEditingCategoryId(cat.id); setCategoryNameInput(cat.name); }} className={`p-1 rounded-xl transition-colors ${selectedCategory === cat.id ? "text-slate-700" : "text-slate-400"}`}><Edit size={14} /></button>)}
               </div>
             )})}
-            <button onClick={handleAddCategory} className="px-4 py-2 rounded-2xl border-2 border-dashed border-slate-300 text-slate-500 text-sm font-semibold flex gap-1.5"><Plus size={16} /> เพิ่มตู้</button>
+            {session && (<button onClick={handleAddCategory} className="px-4 py-2 rounded-2xl border-2 border-dashed border-slate-300 text-slate-500 text-sm font-semibold flex gap-1.5"><Plus size={16} /> เพิ่มตู้</button>)}
           </div>
           <div className="flex flex-col md:flex-row gap-3 mt-4 items-center">
             <div className="relative flex-1 w-full"><Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" /><input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="ค้นหาชื่อยา..." className="w-full bg-white/50 border border-white rounded-2xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:ring-blue-400 text-slate-700" /></div>
@@ -937,10 +1001,12 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                       <div onClick={() => openHistoryModal(med)} className="font-extrabold text-slate-800 text-lg cursor-pointer hover:text-blue-500 leading-tight">{med.name}</div>
                       <div className="text-xs text-slate-500 mt-1.5">รหัส: <span className="font-bold">{med.hosxp_icode || "-"}</span></div>
                     </div>
-                    <div className="flex flex-col gap-2 w-[72px]">
-                      <div className="flex gap-1.5"><button onClick={() => openEditMedModal(med)} className="flex-1 p-2 bg-white/60 rounded-xl text-slate-500 shadow-sm"><Edit size={14}/></button><button onClick={() => handleDeleteMed(med.id)} className="flex-1 p-2 bg-white/60 rounded-xl text-slate-500 shadow-sm"><Trash2 size={14}/></button></div>
-                      <button onClick={() => toggleAvailability(med)} className={`w-full py-1.5 text-[10px] font-bold rounded-xl shadow-sm ${isAvail ? 'bg-emerald-50 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{isAvail ? "เบิกได้" : "เป็น 0"}</button>
-                    </div>
+                    {session && (
+                      <div className="flex flex-col gap-2 w-[72px]">
+                        <div className="flex gap-1.5"><button onClick={() => openEditMedModal(med)} className="flex-1 p-2 bg-white/60 rounded-xl text-slate-500 shadow-sm"><Edit size={14}/></button><button onClick={() => handleDeleteMed(med.id)} className="flex-1 p-2 bg-white/60 rounded-xl text-slate-500 shadow-sm"><Trash2 size={14}/></button></div>
+                        <button onClick={() => toggleAvailability(med)} className={`w-full py-1.5 text-[10px] font-bold rounded-xl shadow-sm ${isAvail ? 'bg-emerald-50 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{isAvail ? "เบิกได้" : "เป็น 0"}</button>
+                      </div>
+                    )}
                   </div>
                   <div>
                      <div className="text-[11px] font-bold text-slate-500 mb-2">คงเหลือ (ตาม EXP):</div>
@@ -958,10 +1024,12 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                        </div>
                      )}
                   </div>
-                  <div className="grid grid-cols-2 gap-2 mt-auto pt-2">
-                      <button onClick={() => openStockModal(med, 'in')} className="flex justify-center gap-1.5 p-2.5 bg-emerald-50/80 text-emerald-700 rounded-xl border border-emerald-100/50 font-bold text-xs shadow-sm hover:bg-emerald-100"><PackagePlus size={16} /> รับเข้า</button>
-                      <button onClick={() => openStockModal(med, 'out')} className="flex justify-center gap-1.5 p-2.5 bg-red-50/80 text-red-700 rounded-xl border border-red-100/50 font-bold text-xs shadow-sm hover:bg-red-100"><PackageMinus size={16} /> ตัดจ่าย</button>
-                  </div>
+                  {session && (
+                    <div className="grid grid-cols-2 gap-2 mt-auto pt-2">
+                        <button onClick={() => openStockModal(med, 'in')} className="flex justify-center gap-1.5 p-2.5 bg-emerald-50/80 text-emerald-700 rounded-xl border border-emerald-100/50 font-bold text-xs shadow-sm hover:bg-emerald-100"><PackagePlus size={16} /> รับเข้า</button>
+                        <button onClick={() => openStockModal(med, 'out')} className="flex justify-center gap-1.5 p-2.5 bg-red-50/80 text-red-700 rounded-xl border border-red-100/50 font-bold text-xs shadow-sm hover:bg-red-100"><PackageMinus size={16} /> ตัดจ่าย</button>
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -971,7 +1039,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         {/* MODAL SECTION */}
         
         {/* Modal: แจ้งเตือนยาใกล้ EXP */}
-        {isExpDashboardOpen && (
+        {isExpDashboardOpen && session && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[80]">
             <div className="bg-white/95 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-3xl p-6 relative flex flex-col h-full max-h-[85vh]">
                 <div className="flex justify-between items-center pb-4 border-b border-slate-100">
@@ -1044,7 +1112,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         )}
 
         {/* Modal: แก้ไขชื่อตู้ยา */}
-        {editingCategoryId !== null && (
+        {editingCategoryId !== null && session && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[75]">
              <div className="bg-white/90 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-sm p-6 relative">
                 <button onClick={() => setEditingCategoryId(null)} className="absolute top-4 right-4 p-1 hover:bg-white/60 rounded-xl"><X size={20} className="text-slate-400"/></button>
@@ -1058,7 +1126,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         )}
 
         {/* Modal: Admin Staff Management */}
-        {isStaffAdminModalOpen && (
+        {isStaffAdminModalOpen && session && session.name === "Admin" && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[80]">
              <div className="bg-white/95 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-lg p-6 relative max-h-[85vh] overflow-y-auto">
                 <button onClick={() => setIsStaffAdminModalOpen(false)} className="absolute top-4 right-4 p-1 hover:bg-slate-100 rounded-xl"><X size={20} className="text-slate-400"/></button>
@@ -1087,7 +1155,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         )}
 
         {/* Modal: Change Password */}
-        {isChangePwdModalOpen && (
+        {isChangePwdModalOpen && session && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[80]">
             <div className="bg-white/90 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden p-6 text-center relative">
                <button onClick={() => setIsChangePwdModalOpen(false)} className="absolute top-4 right-4 p-1 hover:bg-white/60 rounded-xl"><X size={20} className="text-slate-400"/></button>
@@ -1105,7 +1173,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         )}
 
         {/* Modal: เพิ่ม/แก้ไข ข้อมูลยา */}
-        {isMedModalOpen && (
+        {isMedModalOpen && session && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
             <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-white">
               <div className="flex justify-between items-center p-5 md:p-6 border-b border-white/50 bg-white/40"><h2 className="text-lg md:text-xl font-bold text-slate-800">{isEditing ? 'แก้ไขข้อมูลยา' : 'เพิ่มรายการยาใหม่'}</h2><button onClick={() => setIsMedModalOpen(false)} className="p-1 hover:bg-white/60 rounded-xl transition-colors"><X size={22} className="text-slate-500" /></button></div>
@@ -1123,7 +1191,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         )}
 
         {/* Modal: นำเข้าข้อมูล (Import) */}
-        {isImportModalOpen && (
+        {isImportModalOpen && session && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
             <div className="bg-white/90 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden p-6">
                <div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Upload size={20}/> นำเข้าข้อมูลยา</h2><button onClick={() => setIsImportModalOpen(false)}><X size={20} className="text-slate-400" /></button></div>
@@ -1138,7 +1206,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         )}
 
         {/* Modal: Report */}
-        {isReportModalOpen && (
+        {isReportModalOpen && session && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
             <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden border border-white">
               <div className="flex justify-between items-center p-5 border-b border-white/50 bg-blue-50/50"><h2 className="text-lg font-bold flex items-center gap-2 text-blue-800"><FileText size={20} /> พิมพ์รายงาน/ดาวน์โหลด</h2><button onClick={() => setIsReportModalOpen(false)} className="p-1 hover:bg-white/60 rounded-xl"><X size={20} className="text-blue-400" /></button></div>
@@ -1163,7 +1231,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         )}
 
         {/* Modal: QR Code */}
-        {isQRModalOpen && (
+        {isQRModalOpen && session && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
             <div className="bg-white/80 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
               <div className="flex justify-between items-center p-5 border-b border-white/50"><h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><QrCode size={20}/> พิมพ์ QR Code</h2><button onClick={() => setIsQRModalOpen(false)}><X size={22} className="text-slate-400 hover:text-slate-600" /></button></div>
@@ -1189,7 +1257,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         )}
 
         {/* Modal: Stock In/Out */}
-        {isStockModalOpen && selectedMed && (
+        {isStockModalOpen && selectedMed && session && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[70]">
             <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-white flex flex-col max-h-[90vh]">
               <div className={`flex justify-between items-center p-5 border-b border-white/50 ${stockAction === 'in' ? 'bg-emerald-50/60' : 'bg-red-50/60'}`}>
@@ -1262,69 +1330,176 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           </div>
         )}
 
-        {/* Modal: History */}
+        {/* Modal: History / Detail ยา */}
         {isHistoryModalOpen && historyMed && (
           <div className="fixed inset-0 bg-slate-50 flex flex-col z-50 overflow-y-auto w-full h-full">
             <div className="bg-white/85 backdrop-blur-md border-b border-slate-200 flex justify-between items-center p-4 sticky top-0 z-10 shadow-sm">
               <button onClick={() => { setIsHistoryModalOpen(false); setHistoryMed(null); setHistoryRows([]); }} className="flex items-center text-sm font-bold text-slate-600 hover:text-blue-600"><ArrowLeft size={18} className="mr-1.5"/> กลับหน้ารวม</button>
-              <div className="flex gap-2">
-                 <button onClick={() => openStockModal(historyMed, 'in')} className="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl font-bold text-xs flex items-center gap-1 shadow-sm"><PackagePlus size={14}/> รับเข้า</button>
-                 <button onClick={() => openStockModal(historyMed, 'out')} className="px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-xl font-bold text-xs flex items-center gap-1 shadow-sm"><PackageMinus size={14}/> ตัดจ่าย</button>
-              </div>
+              {session ? (
+                <div className="text-xs font-bold text-slate-700 bg-white px-3 py-1.5 rounded-full border border-slate-200 shadow-sm flex items-center gap-1.5"><User size={14} className="text-slate-400"/> {session.name}</div>
+              ) : (
+                <div className="text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-200 shadow-sm">โหมดสแกน QR (ผู้มาเยือน)</div>
+              )}
             </div>
-            <div className="p-4 md:p-6 max-w-3xl mx-auto w-full space-y-5 pb-20">
-              <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-slate-100">
-                <div className="text-center mb-6">
-                   <h1 className="text-2xl font-extrabold text-slate-800">{historyMed.name}</h1>
-                   <p className="text-xs text-slate-500 mt-1">รหัส HosXP: <span className="font-bold">{historyMed.hosxp_icode || "-"}</span> | ตู้: <span className="font-bold">{getCategoryName(historyMed.cabinet_category)}</span></p>
-                </div>
-
-                {/* โน้ตผู้มาเยือนสำหรับยานี้ */}
-                <div className="mb-6 bg-amber-50/70 border border-amber-200/60 rounded-2xl p-4 shadow-sm">
-                   <h3 className="text-xs font-bold text-amber-800 mb-2 flex items-center gap-1.5"><MessageSquareText size={15}/> โน้ตผู้มาเยือนสำหรับยานี้</h3>
-                   {visitorNotes.filter(n => n.medicine_id?.toString() === historyMed.id?.toString()).length === 0 ? (
-                      <div className="text-xs text-amber-600/70 py-1">ไม่มีโน้ตผู้มาเยือนสำหรับยานี้</div>
-                   ) : (
-                      <div className="space-y-2 mt-2">
-                         {visitorNotes.filter(n => n.medicine_id?.toString() === historyMed.id?.toString()).map(note => (
-                            <div key={note.id} className="bg-white/90 border border-amber-100 p-3 rounded-xl flex justify-between items-center text-xs">
-                               <div>
-                                  <div className="font-bold text-slate-800">เบิกออก <span className="text-red-600">{note.amount} ชิ้น</span> (EXP: {note.exp_date})</div>
-                                  <div className="text-[10px] text-slate-500 mt-0.5">ผู้บันทึก: <span className="font-bold text-slate-700">{note.staff_name}</span> | {formatHistoryDate(note.created_at)}</div>
-                               </div>
-                               {note.status === 'visitor_note' ? (
-                                  <button onClick={() => handleAcknowledgeNote(note.id)} className="px-2.5 py-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white border border-emerald-200 rounded-lg font-bold transition-all shadow-sm">รับทราบ</button>
-                               ) : (
-                                  <span className="text-[10px] bg-slate-100 text-slate-500 font-bold px-2 py-1 rounded-lg">รับทราบแล้ว</span>
-                               )}
-                            </div>
-                         ))}
-                      </div>
-                   )}
-                </div>
-
-                <div className="space-y-3.5">
-                  <h3 className="font-bold flex items-center gap-2 text-slate-700"><History size={20} /> ประวัติการทำรายการทั้งหมด</h3>
-                  {historyRows.length === 0 ? (
-                     <div className="text-center py-8 text-slate-400 text-sm">ยังไม่มีประวัติการทำรายการ</div>
-                  ) : (
-                     historyRows.map((row: any) => (
-                        <div key={row.id} className="flex flex-col gap-1.5 bg-white border border-slate-100 rounded-2xl p-4 md:p-5 shadow-sm">
-                          <div className={`text-sm font-extrabold ${row.action === 'in' ? 'text-emerald-700' : 'text-red-700'}`}>{row.action === 'in' ? 'รับเข้า' : 'ตัดจ่าย'} {row.amount}</div>
-                          <div className="text-[10px] md:text-xs text-slate-500 flex items-center gap-1 font-medium"><CalendarDays size={12} /> EXP: {row.exp_date || "-"}</div>
-                          <div className="text-[10px] text-slate-400 font-medium">ทำรายการเมื่อ: {formatHistoryDate(row.created_at)}</div>
-                          <div className="text-[10px] font-bold text-slate-600">โดย {row.staff_name} {row.edit_note ? `(${row.edit_note})` : ''}</div>
-                        </div>
-                     ))
-                  )}
-                </div>
+            
+            <div className="p-4 md:p-6 max-w-3xl mx-auto w-full space-y-4 pb-20">
+              
+              {/* ชื่อยาและหัวข้อ */}
+              <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 text-center">
+                 <h1 className="text-2xl font-extrabold text-slate-800">{historyMed.name}</h1>
+                 <p className="text-xs text-slate-500 mt-1">รหัส HosXP: <span className="font-bold">{historyMed.hosxp_icode || "-"}</span> | ตู้: <span className="font-bold">{getCategoryName(historyMed.cabinet_category)}</span></p>
               </div>
+
+              {/* ส่วนแสดงสต็อกคงเหลือแบ่งตาม EXP */}
+              <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
+                <div className="flex items-center gap-2 font-bold text-slate-700 mb-3 text-sm"><CalendarDays size={18} className="text-slate-500"/> สต็อกคงเหลือแบ่งตาม EXP</div>
+                
+                {(!historyMed.medicine_lots || historyMed.medicine_lots.filter((l:any) => l.current_stock > 0).length === 0) ? (
+                   <div className="text-sm text-red-500 py-2">ไม่มีสต็อกคงเหลือในขณะนี้</div>
+                ) : (
+                   <div className="space-y-3">
+                      {historyMed.medicine_lots.filter((l:any) => l.current_stock > 0).map((lot: any) => {
+                         const p = Math.floor(lot.current_stock / lot.pack_size);
+                         const r = lot.current_stock % lot.pack_size;
+                         const unitStr = lot.unit_name === "'s" ? "เม็ด" : lot.unit_name;
+                         return (
+                           <div key={lot.id} className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm flex flex-col gap-1.5">
+                              <div className="text-rose-600 font-extrabold text-sm">EXP: {lot.exp_date}</div>
+                              <div className="flex items-baseline gap-1.5 text-lg font-extrabold text-slate-800">
+                                 <span className="text-emerald-600">{p}</span>
+                                 <span className="text-slate-400 text-xs">x</span>
+                                 <span className="text-slate-700">{lot.pack_size}</span>
+                                 <span className="text-xs font-semibold text-slate-500">{unitStr}</span>
+                              </div>
+                              <div className="text-xs text-slate-400 font-medium">รวมทั้งหมด {lot.current_stock} หน่วย</div>
+                           </div>
+                         );
+                      })}
+                   </div>
+                )}
+              </div>
+
+              {/* เงื่อนไขแสดงปุ่มรับเข้า/ตัดจ่าย (เฉพาะผู้ที่ Login) หรือ ฟอร์มโน้ตผู้มาเยือน (สำหรับคนสแกน QR) */}
+              {session ? (
+                <div className="grid grid-cols-2 gap-3">
+                   <button onClick={() => openStockModal(historyMed, 'in')} className="flex items-center justify-center gap-2 py-4 bg-emerald-50/80 text-emerald-700 border border-emerald-200/60 rounded-3xl font-bold shadow-sm hover:bg-emerald-100 transition-all"><PackagePlus size={20}/> รับเข้าสต็อก</button>
+                   <button onClick={() => openStockModal(historyMed, 'out')} className="flex items-center justify-center gap-2 py-4 bg-red-50/80 text-red-700 border border-red-200/60 rounded-3xl font-bold shadow-sm hover:bg-red-100 transition-all"><PackageMinus size={20}/> ตัดจ่ายสต็อก</button>
+                </div>
+              ) : (
+                <div className="bg-amber-50/90 border border-amber-200 rounded-3xl p-5 shadow-sm space-y-3">
+                   <h3 className="text-sm font-bold text-amber-800 flex items-center gap-2"><MessageSquareText size={18}/> บันทึกโน้ตผู้มาเยือน (เบิกจ่ายยา)</h3>
+                   <form onSubmit={handleQrVisitorSubmit} className="space-y-3">
+                      <div>
+                         <label className="block text-xs font-bold text-slate-700 mb-1">เลือกล็อต EXP *</label>
+                         <select required className="w-full bg-white border border-amber-200 rounded-xl p-3 text-sm font-medium outline-none shadow-sm" value={qrVisitorLotId} onChange={(e) => setQrVisitorLotId(e.target.value)}>
+                            <option value="">-- เลือกล็อต EXP --</option>
+                            {(historyMed.medicine_lots || []).filter((l: any) => l.current_stock > 0).map((lot: any) => {
+                               const packs = Math.floor(lot.current_stock / lot.pack_size); const rem = lot.current_stock % lot.pack_size;
+                               const unitStr = lot.unit_name === "'s" ? "'" : ` ${lot.unit_name}`;
+                               return <option key={lot.id} value={lot.id}>EXP: {lot.exp_date} ({packs} กล่อง × {lot.pack_size}{unitStr} {rem > 0 ? `+ เศษ ${rem}` : ''} | เหลือรวม: {lot.current_stock})</option>
+                            })}
+                         </select>
+                      </div>
+                      <div>
+                         <div className="flex bg-slate-100/80 p-1 rounded-xl mb-2 shadow-inner">
+                           <button type="button" className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${qrVisitorInputMode === 'base' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`} onClick={() => setQrVisitorInputMode('base')}>กรอกเป็นเม็ด/ชิ้น</button>
+                           <button type="button" className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${qrVisitorInputMode === 'pack' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`} onClick={() => setQrVisitorInputMode('pack')}>กรอกเป็นกล่อง/แพ็ค</button>
+                         </div>
+                         {qrVisitorInputMode === 'base' ? (
+                           <input type="number" required min="1" placeholder="จำนวน (ชิ้นย่อย)" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-bold outline-none shadow-sm" value={qrVisitorAmount} onChange={(e) => setQrVisitorAmount(e.target.value)} />
+                         ) : (
+                           <input type="number" step="0.1" required min="0.1" placeholder="จำนวน (กล่อง/แพ็ค)" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-bold outline-none shadow-sm" value={qrVisitorPackCount} onChange={(e) => setQrVisitorPackCount(e.target.value)} />
+                         )}
+                      </div>
+                      <div>
+                         <label className="block text-xs font-bold text-slate-700 mb-1">ชื่อผู้บันทึก *</label>
+                         <input type="text" required placeholder="ชื่อของคุณ" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-medium outline-none shadow-sm" value={qrVisitorName} onChange={(e) => setQrVisitorName(e.target.value)} />
+                      </div>
+                      <button type="submit" disabled={qrVisitorSubmitting} className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold p-3.5 rounded-xl shadow-md transition-all disabled:opacity-60">{qrVisitorSubmitting ? 'กำลังบันทึก...' : 'บันทึกโน้ตผู้มาเยือน'}</button>
+                   </form>
+                </div>
+              )}
+
+              {/* โน้ตผู้มาเยือนสำหรับยานี้ */}
+              <div className="bg-amber-50/70 border border-amber-200/60 rounded-3xl p-5 shadow-sm">
+                 <h3 className="text-sm font-bold text-amber-800 mb-3 flex items-center gap-2"><MessageSquareText size={18}/> โน้ตผู้มาเยือนสำหรับยานี้</h3>
+                 {visitorNotes.filter(n => n.medicine_id?.toString() === historyMed.id?.toString()).length === 0 ? (
+                    <div className="text-xs text-amber-600/70 py-2">ไม่มีโน้ตผู้มาเยือนสำหรับยานี้</div>
+                 ) : (
+                    <div className="space-y-2.5">
+                       {visitorNotes.filter(n => n.medicine_id?.toString() === historyMed.id?.toString()).map(note => (
+                          <div key={note.id} className="bg-white/90 border border-amber-100 p-3.5 rounded-2xl flex justify-between items-center text-xs shadow-sm">
+                             <div>
+                                <div className="font-bold text-slate-800">เบิกออก <span className="text-red-600">{note.amount} ชิ้น</span> (EXP: {note.exp_date})</div>
+                                <div className="text-[10px] text-slate-500 mt-1 font-medium">ผู้บันทึก: <span className="font-bold text-slate-700">{note.staff_name}</span> | {formatHistoryDate(note.created_at)}</div>
+                             </div>
+                             {session ? (
+                                note.status === 'visitor_note' ? (
+                                   <button onClick={() => handleAcknowledgeNote(note.id)} className="px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white border border-emerald-200 rounded-xl font-bold transition-all shadow-sm">รับทราบ</button>
+                                ) : (
+                                   <span className="text-[10px] bg-slate-100 text-slate-500 font-bold px-2.5 py-1 rounded-xl">รับทราบแล้ว</span>
+                                )
+                             ) : (
+                                <span className={`text-[10px] font-bold px-2.5 py-1 rounded-xl ${note.status === 'visitor_acknowledged' ? 'bg-slate-100 text-slate-500' : 'bg-amber-100 text-amber-800'}`}>
+                                   {note.status === 'visitor_acknowledged' ? 'รับทราบแล้ว' : 'รอเจ้าหน้าที่ตรวจสอบ'}
+                                </span>
+                             )}
+                          </div>
+                       ))}
+                    </div>
+                 )}
+              </div>
+
+              {/* ประวัติการทำรายการล่าสุด */}
+              <div className="space-y-3 pt-2">
+                <h3 className="font-bold flex items-center gap-2 text-slate-700 text-sm px-1"><History size={18} /> ประวัติการทำรายการล่าสุด</h3>
+                {historyRows.length === 0 ? (
+                   <div className="text-center py-10 text-slate-400 text-sm bg-white rounded-3xl border border-slate-100">ยังไม่มีประวัติการทำรายการ</div>
+                ) : (
+                   historyRows.map((row: any) => {
+                      const lotInfo = (historyMed.medicine_lots || []).find((l:any) => String(l.id) === String(row.lot_id));
+                      const pSize = lotInfo?.pack_size || 100;
+                      const uName = lotInfo?.unit_name || "'s";
+                      const formattedText = formatBoxString(row.amount, pSize, uName);
+
+                      return (
+                         <div key={row.id} className="bg-white border border-slate-200/70 rounded-3xl p-4 shadow-sm flex items-start justify-between gap-3">
+                           <div className="flex items-start gap-3">
+                              <div className={`p-2.5 rounded-2xl shrink-0 mt-0.5 ${row.action === 'in' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                 {row.action === 'in' ? <PackagePlus size={18}/> : <PackageMinus size={18}/>}
+                              </div>
+                              <div>
+                                 <div className={`text-sm font-extrabold ${row.action === 'in' ? 'text-emerald-700' : 'text-red-700'}`}>
+                                    {row.action === 'in' ? 'รับเข้า' : 'ตัดจ่าย'} {formattedText}
+                                 </div>
+                                 <div className="text-xs text-slate-500 font-medium mt-0.5">
+                                    (รวมทั้งหมด {row.amount} {uName === "'s" ? "เม็ด" : uName})
+                                 </div>
+                                 <div className="text-xs text-rose-500 font-bold mt-1.5 flex items-center gap-1">
+                                    <CalendarDays size={12}/> EXP: {row.exp_date || "-"}
+                                 </div>
+                                 <div className="text-[10px] text-slate-400 mt-1 font-medium">
+                                    {formatHistoryDate(row.created_at)} {row.edit_note ? `[${row.edit_note}]` : ''}
+                                 </div>
+                              </div>
+                           </div>
+                           <div className="shrink-0">
+                              <div className="text-[11px] font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded-full border border-slate-200 flex items-center gap-1">
+                                 <User size={10} className="text-slate-400"/> {row.staff_name}
+                              </div>
+                           </div>
+                         </div>
+                      );
+                   })
+                )}
+              </div>
+
             </div>
           </div>
         )}
         
         {/* Modal: Visitor Note Main Page */}
-        {isVisitorMainModalOpen && (
+        {isVisitorMainModalOpen && session && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[80]">
              <div className="bg-white/95 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto">
                 <button onClick={() => { setIsVisitorMainModalOpen(false); setVisitorSearchTerm(""); setVisitorMedId(""); setVisitorLotId(""); }} className="absolute top-4 right-4 p-1 hover:bg-slate-100 rounded-xl"><X size={20} className="text-slate-400"/></button>
@@ -1405,6 +1580,5 @@ export default function StockCardPage() {
   const handleLogout = () => { localStorage.removeItem(SESSION_KEY); SessionState(null); };
 
   if (!checkedSession) return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-400">กำลังโหลด...</div>;
-  if (!SessionState) return <LoginScreen staffList={staffList} onLogin={SessionState} />;
-  return <StockCardApp session={SessionState} onLogout={handleLogout} staffList={staffList} refreshStaffList={fetchStaffNames} />;
+  return <StockCardApp session={session} onLogout={handleLogout} staffList={staffList} refreshStaffList={fetchStaffNames} />;
 }
