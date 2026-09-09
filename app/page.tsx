@@ -6,7 +6,7 @@ import {
   Plus, PackagePlus, PackageMinus, X, CalendarDays,
   User, Lock, LogOut, KeyRound, Bell, Check,
   Search, Edit, Trash2, LayoutGrid, History,
-  FileText, Printer, QrCode, ArrowLeft, Upload, ArrowUpDown, Clock, Users, UserPlus, MessageSquareText
+  FileText, Printer, QrCode, ArrowLeft, Upload, ArrowUpDown, Clock, Users, UserPlus, MessageSquareText, Download
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -26,10 +26,12 @@ const CAT_COLORS = [
 ];
 
 type Session = { id: string; name: string; isCentral: boolean };
+
 async function sha256Hex(t: string) { 
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)); 
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join(""); 
 }
+
 const formatBoxString = (totalItems: number, packSize: number, unitName: string) => { 
   if (packSize <= 1 || totalItems === 0) return `${totalItems} ${unitName}`; 
   const packs = Math.floor(totalItems / packSize); 
@@ -38,6 +40,92 @@ const formatBoxString = (totalItems: number, packSize: number, unitName: string)
   if (packs === 0) return `${rem} ${unitStr}`; 
   return `${packs} กล่อง × ${packSize} ${unitStr} ${rem > 0 ? `(เศษ ${rem} ${unitStr})` : ''}`; 
 }
+
+// ----------------------------------------------------
+// ระบบพิมพ์และแปลงวันที่อัจฉริยะ (Smart Date Input)
+// ----------------------------------------------------
+const SmartDateInput = ({ value, onChange, placeholder = "วว/ดด/ปปปป หรือ 150926", className, required }: any) => {
+    const [display, setDisplay] = useState("");
+
+    // ซิงค์ค่าจากภายนอกมาแสดงผลเป็นรูปแบบ DD/MM/YYYY (ค.ศ.)
+    useEffect(() => {
+        if (value) {
+            const [y, m, d] = value.split('-');
+            if (y && m && d && y.length === 4) {
+                setDisplay(`${d}/${m}/${y}`);
+            }
+        } else {
+            setDisplay("");
+        }
+    }, [value]);
+
+    const handleBlur = () => {
+        if (!display.trim()) {
+            onChange("");
+            return;
+        }
+        
+        // ลบอักขระที่ไม่ใช่ตัวเลขออกให้หมด
+        const digits = display.replace(/\D/g, '');
+        let d="", m="", y="";
+        
+        if (digits.length === 6) {
+            d = digits.slice(0, 2); 
+            m = digits.slice(2, 4); 
+            const yr2 = parseInt(digits.slice(4), 10);
+            y = (yr2 > 40 ? 2500 + yr2 : 2000 + yr2).toString();
+        } else if (digits.length === 8) {
+            d = digits.slice(0, 2); 
+            m = digits.slice(2, 4); 
+            y = digits.slice(4);
+        } else {
+            const parts = display.split(/[-/]/);
+            if (parts.length === 3) {
+                d = parts[0].padStart(2, '0');
+                m = parts[1].padStart(2, '0');
+                y = parts[2];
+                if (y.length === 2) {
+                    const yr2 = parseInt(y, 10);
+                    y = (yr2 > 40 ? 2500 + yr2 : 2000 + yr2).toString();
+                }
+            }
+        }
+
+        if (d && m && y && d !== "00" && m !== "00") {
+            let parsedY = parseInt(y, 10);
+            if (parsedY > 2400) {
+                parsedY -= 543;
+            }
+            const paddedD = d.padStart(2, '0');
+            const paddedM = m.padStart(2, '0');
+            const isoDate = `${parsedY}-${paddedM}-${paddedD}`;
+            onChange(isoDate);
+        } else {
+            setDisplay(display); 
+        }
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleBlur();
+        }
+    }
+
+    return (
+        <input 
+          type="text" 
+          value={display} 
+          onChange={(e) => setDisplay(e.target.value)} 
+          onBlur={handleBlur} 
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder} 
+          className={className}
+          required={required}
+        />
+    );
+};
+// ----------------------------------------------------
 
 function LoginScreen({ onLogin, staffList }: { onLogin: (s: Session) => void, staffList: string[] }) {
   const [selectedName, setSelectedName] = useState<string | null>(null); 
@@ -49,20 +137,10 @@ function LoginScreen({ onLogin, staffList }: { onLogin: (s: Session) => void, st
   const [error, setError] = useState(""); 
   const [busy, setBusy] = useState(false); 
 
-  const closeModal = () => { 
-    setSelectedName(null); 
-    setStaffRow(null); 
-    setPassword(""); 
-    setPassword2(""); 
-    setError(""); 
-  };
+  const closeModal = () => { setSelectedName(null); setStaffRow(null); setPassword(""); setPassword2(""); setError(""); };
 
   const openStaffLogin = async (name: string) => { 
-    setSelectedName(name); 
-    setError(""); 
-    setPassword(""); 
-    setPassword2(""); 
-    setLoadingRow(true); 
+    setSelectedName(name); setError(""); setPassword(""); setPassword2(""); setLoadingRow(true); 
     try { 
       let { data, error } = await supabase.from("staff_accounts").select("*").eq("name", name).maybeSingle(); 
       if (error) throw error; 
@@ -75,9 +153,7 @@ function LoginScreen({ onLogin, staffList }: { onLogin: (s: Session) => void, st
       setMode(data.password_hash ? "password" : "setPassword"); 
     } catch (e: any) { 
       setError("โหลดข้อมูลไม่สำเร็จ"); 
-    } finally { 
-      setLoadingRow(false); 
-    } 
+    } finally { setLoadingRow(false); } 
   };
 
   const handleSubmitPassword = async (e: React.FormEvent) => { 
@@ -97,19 +173,12 @@ function LoginScreen({ onLogin, staffList }: { onLogin: (s: Session) => void, st
         localStorage.setItem(SESSION_KEY, JSON.stringify(session)); 
         onLogin(session); 
       } else { 
-        if (hash !== staffRow.password_hash) { 
-          setBusy(false); 
-          return setError("รหัสผ่านไม่ถูกต้อง"); 
-        } 
+        if (hash !== staffRow.password_hash) { setBusy(false); return setError("รหัสผ่านไม่ถูกต้อง"); } 
         const session: Session = { id: staffRow.id, name: staffRow.name, isCentral: false }; 
         localStorage.setItem(SESSION_KEY, JSON.stringify(session)); 
         onLogin(session); 
       } 
-    } catch (e: any) { 
-      setError("เกิดข้อผิดพลาด"); 
-    } finally { 
-      setBusy(false); 
-    } 
+    } catch (e: any) { setError("เกิดข้อผิดพลาด"); } finally { setBusy(false); } 
   };
 
   return (
@@ -122,43 +191,21 @@ function LoginScreen({ onLogin, staffList }: { onLogin: (s: Session) => void, st
         <div className="bg-white/60 backdrop-blur-xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/80 p-5 mb-5">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {staffList.map((name) => (
-              <button 
-                key={name} 
-                onClick={() => openStaffLogin(name)} 
-                className={`flex items-center gap-2 justify-center border rounded-2xl p-3.5 font-medium transition-all ${name === 'Admin' ? 'bg-amber-50/80 text-amber-800 border-amber-200 hover:bg-amber-100 font-bold' : 'bg-white/50 border-white/60 text-slate-700 hover:bg-white/90 hover:shadow-sm'}`}
-              >
-                <User size={18} className={name === 'Admin' ? 'text-amber-600' : 'text-slate-400'} /> {name}
-              </button>
+              <button key={name} onClick={() => openStaffLogin(name)} className={`flex items-center gap-2 justify-center border rounded-2xl p-3.5 font-medium transition-all ${name === 'Admin' ? 'bg-amber-50/80 text-amber-800 border-amber-200 hover:bg-amber-100 font-bold' : 'bg-white/50 border-white/60 text-slate-700 hover:bg-white/90 hover:shadow-sm'}`}><User size={18} className={name === 'Admin' ? 'text-amber-600' : 'text-slate-400'} /> {name}</button>
             ))}
           </div>
         </div>
-
         {selectedName && (
           <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden border border-white">
-              <div className="flex justify-between items-center p-5 border-b border-white/50 bg-white/40">
-                <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800"><Lock size={18} /> {selectedName}</h2>
-                <button onClick={closeModal}><X size={22} className="text-slate-400 hover:text-slate-600" /></button>
-              </div>
-              {loadingRow ? (
-                <div className="p-8 text-center text-slate-500">กำลังโหลด...</div>
-              ) : (
+              <div className="flex justify-between items-center p-5 border-b border-white/50 bg-white/40"><h2 className="text-lg font-bold flex items-center gap-2 text-slate-800"><Lock size={18} /> {selectedName}</h2><button onClick={closeModal}><X size={22} className="text-slate-400 hover:text-slate-600" /></button></div>
+              {loadingRow ? <div className="p-8 text-center text-slate-500">กำลังโหลด...</div> : (
                 <form onSubmit={handleSubmitPassword} className="p-6 space-y-5">
-                  {mode === "setPassword" && (
-                    <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">การเข้าสู่ระบบครั้งแรก กรุณาตั้งรหัสผ่านใหม่เพื่อความปลอดภัย</p>
-                  )}
-                  <div>
-                    <label className="block text-sm font-medium mb-1.5 text-slate-700">{mode === "setPassword" ? "ตั้งรหัสผ่านใหม่" : "รหัสผ่าน"}</label>
-                    <input type="password" required autoFocus className="w-full bg-white/50 border border-white rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white transition-all" value={password} onChange={(e) => setPassword(e.target.value)} />
-                  </div>
-                  {mode === "setPassword" && (
-                    <div>
-                      <label className="block text-sm font-medium mb-1.5 text-slate-700">ยืนยันรหัสผ่าน</label>
-                      <input type="password" required className="w-full bg-white/50 border border-white rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white transition-all" value={password2} onChange={(e) => setPassword2(e.target.value)} />
-                    </div>
-                  )}
+                  {mode === "setPassword" && <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">การเข้าสู่ระบบครั้งแรก กรุณาตั้งรหัสผ่านใหม่เพื่อความปลอดภัย</p>}
+                  <div><label className="block text-sm font-medium mb-1.5 text-slate-700">{mode === "setPassword" ? "ตั้งรหัสผ่านใหม่" : "รหัสผ่าน"}</label><input type="password" required autoFocus className="w-full bg-white/50 border border-white rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
+                  {mode === "setPassword" && <div><label className="block text-sm font-medium mb-1.5 text-slate-700">ยืนยันรหัสผ่าน</label><input type="password" required className="w-full bg-white/50 border border-white rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400" value={password2} onChange={(e) => setPassword2(e.target.value)} /></div>}
                   {error && <p className="text-red-500 text-sm">{error}</p>}
-                  <button type="submit" disabled={busy} className="w-full bg-blue-500 hover:bg-blue-600 text-white p-3.5 rounded-xl font-medium disabled:opacity-60 shadow-lg shadow-blue-200 transition-all">{busy ? "กำลังตรวจสอบ..." : mode === "setPassword" ? "ตั้งรหัสผ่านและเข้าสู่ระบบ" : "เข้าสู่ระบบ"}</button>
+                  <button type="submit" disabled={busy} className="w-full bg-blue-500 hover:bg-blue-600 text-white p-3.5 rounded-xl font-medium shadow-lg transition-all">{busy ? "กำลังตรวจสอบ..." : mode === "setPassword" ? "ตั้งรหัสผ่าน" : "เข้าสู่ระบบ"}</button>
                 </form>
               )}
             </div>
@@ -181,6 +228,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const [selectedMed, setSelectedMed] = useState<any>(null); 
   const [stockAction, setStockAction] = useState<'in' | 'out'>('in'); 
   const [stockInMode, setStockInMode] = useState<'existing' | 'new'>('existing'); 
+  const [txDate, setTxDate] = useState("");
   const [stockExpDate, setStockExpDate] = useState(""); 
   const [stockPackSize, setStockPackSize] = useState("100"); 
   const [stockUnitName, setStockUnitName] = useState("'s"); 
@@ -246,10 +294,10 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const [visitorName, setVisitorName] = useState(""); 
   const [visitorSubmitting, setVisitorSubmitting] = useState(false);
   const [visitorNotes, setVisitorNotes] = useState<any[]>([]);
+  const [visitorListMode, setVisitorListMode] = useState<'pending'|'history'>('pending');
 
-  // EXP Dashboard States
   const [isExpDashboardOpen, setIsExpDashboardOpen] = useState(false);
-  const [expFilterDays, setExpFilterDays] = useState<number>(30); // เริ่มต้นที่ 30 วัน
+  const [expFilterDays, setExpFilterDays] = useState<number>(30); 
 
   const fetchMedicines = async () => { 
     try { 
@@ -277,7 +325,10 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   
   const fetchVisitorNotes = async () => { 
     try { 
-      const { data } = await supabase.from("stock_transactions").select("*").eq("status", "visitor_note").order("created_at", { ascending: false }); 
+      const { data } = await supabase.from("stock_transactions")
+          .select("*")
+          .in("status", ["visitor_note", "visitor_acknowledged"])
+          .order("created_at", { ascending: false }); 
       if (data) setVisitorNotes(data); 
     } catch (error) { 
       console.error(error); 
@@ -298,6 +349,16 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     fetchStaffRows(); 
     const savedCat = localStorage.getItem(`saved_cat_${session.id}`); 
     if (savedCat) setSelectedCategory(savedCat === "all" ? "all" : Number(savedCat)); 
+
+    if (typeof window !== 'undefined') {
+       const params = new URLSearchParams(window.location.search);
+       const scanId = params.get('scan');
+       if (scanId) {
+          setIsVisitorMainModalOpen(true);
+          setVisitorMedId(scanId);
+          window.history.replaceState({}, document.title, "/");
+       }
+    }
   }, []);
 
   useEffect(() => { 
@@ -326,9 +387,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       const { error } = await supabase.from("cabinet_categories").insert([{ id: nextId, name: newName.trim() }]); 
       if (error) throw error; 
       fetchCategories(); 
-    } catch (error: any) { 
-      alert("เพิ่มตู้ยาไม่สำเร็จ: " + error.message); 
-    } 
+    } catch (error: any) { alert("เพิ่มตู้ยาไม่สำเร็จ: " + error.message); } 
   };
 
   const handleRenameCategory = async (e: React.FormEvent) => { 
@@ -339,13 +398,8 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     try { 
       const { error } = await supabase.from("cabinet_categories").update({ name: trimmed }).eq("id", editingCategoryId); 
       if (error) throw error; 
-      fetchCategories(); 
-      setEditingCategoryId(null); 
-      setCategoryNameInput(""); 
-      alert("เปลี่ยนชื่อตู้ยาสำเร็จ!"); 
-    } catch (error: any) { 
-      alert("บันทึกชื่อหมวดหมู่ไม่สำเร็จ: " + error.message); 
-    } 
+      fetchCategories(); setEditingCategoryId(null); setCategoryNameInput(""); alert("เปลี่ยนชื่อตู้ยาสำเร็จ!"); 
+    } catch (error: any) { alert("บันทึกชื่อหมวดหมู่ไม่สำเร็จ: " + error.message); } 
   };
 
   const getCategoryName = (id: string | number) => { 
@@ -362,22 +416,11 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     try { 
       const oldHash = await sha256Hex(oldPwd); 
       const { data } = await supabase.from("staff_accounts").select("password_hash").eq("id", session.id).single(); 
-      if (data?.password_hash !== oldHash) { 
-        setIsSubmitting(false); 
-        return setPwdError("รหัสผ่านเดิมไม่ถูกต้อง"); 
-      } 
+      if (data?.password_hash !== oldHash) { setIsSubmitting(false); return setPwdError("รหัสผ่านเดิมไม่ถูกต้อง"); } 
       const newHash = await sha256Hex(newPwd); 
       await supabase.from("staff_accounts").update({ password_hash: newHash }).eq("id", session.id); 
-      alert("เปลี่ยนรหัสผ่านสำเร็จ!"); 
-      setIsChangePwdModalOpen(false); 
-      setOldPwd(""); 
-      setNewPwd(""); 
-      setNewPwd2(""); 
-    } catch (err: any) { 
-      setPwdError("เกิดข้อผิดพลาด: " + err.message); 
-    } finally { 
-      setIsSubmitting(false); 
-    } 
+      alert("เปลี่ยนรหัสผ่านสำเร็จ!"); setIsChangePwdModalOpen(false); setOldPwd(""); setNewPwd(""); setNewPwd2(""); 
+    } catch (err: any) { setPwdError("เกิดข้อผิดพลาด: " + err.message); } finally { setIsSubmitting(false); } 
   };
 
   const handleAdminResetStaffPwd = async (staffId: string, staffName: string) => { 
@@ -387,11 +430,8 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       const hash = await sha256Hex(p); 
       const { error } = await supabase.from("staff_accounts").update({ password_hash: hash }).eq("id", staffId); 
       if (error) throw error; 
-      alert(`เปลี่ยนรหัสผ่านของ ${staffName} สำเร็จ!`); 
-      fetchStaffRows(); 
-    } catch (e: any) { 
-      alert("ไม่สำเร็จ: " + e.message); 
-    } 
+      alert(`เปลี่ยนรหัสผ่านของ ${staffName} สำเร็จ!`); fetchStaffRows(); 
+    } catch (e: any) { alert("ไม่สำเร็จ: " + e.message); } 
   };
 
   const handleAdminDeleteStaff = async (staffId: string, staffName: string) => { 
@@ -400,12 +440,8 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     try { 
       const { error } = await supabase.from("staff_accounts").delete().eq("id", staffId); 
       if (error) throw error; 
-      alert(`ลบผู้ใช้ ${staffName} สำเร็จ!`); 
-      await fetchStaffRows(); 
-      refreshStaffList(); 
-    } catch (e: any) { 
-      alert("ลบไม่สำเร็จ: " + e.message); 
-    } 
+      alert(`ลบผู้ใช้ ${staffName} สำเร็จ!`); await fetchStaffRows(); refreshStaffList(); 
+    } catch (e: any) { alert("ลบไม่สำเร็จ: " + e.message); } 
   };
 
   const handleAdminAddStaff = async (e: React.FormEvent) => { 
@@ -415,23 +451,16 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     try { 
       const { error } = await supabase.from("staff_accounts").insert([{ name, password_hash: await sha256Hex("1234"), is_central: false }]); 
       if (error) throw error; 
-      alert(`เพิ่มเจ้าหน้าที่ ${name} สำเร็จ! (รหัสผ่านเริ่มต้น: 1234)`); 
-      setNewStaffNameInput(""); 
-      await fetchStaffRows(); 
-      refreshStaffList(); 
-    } catch (e: any) { 
-      alert("เพิ่มไม่สำเร็จ: " + e.message); 
-    } 
+      alert(`เพิ่มเจ้าหน้าที่ ${name} สำเร็จ! (รหัสผ่านเริ่มต้น: 1234)`); setNewStaffNameInput(""); await fetchStaffRows(); refreshStaffList(); 
+    } catch (e: any) { alert("เพิ่มไม่สำเร็จ: " + e.message); } 
   };
 
   const handleAcknowledgeNote = async (id: string) => { 
     try { 
       const { error } = await supabase.from("stock_transactions").update({ status: "visitor_acknowledged" }).eq("id", id); 
       if (error) throw error; 
-      setVisitorNotes(prev => prev.filter(n => n.id !== id)); 
-    } catch (e: any) { 
-      alert("เกิดข้อผิดพลาด: " + e.message); 
-    } 
+      fetchVisitorNotes(); 
+    } catch (e: any) { alert("เกิดข้อผิดพลาด: " + e.message); } 
   };
 
   const handleVisitorMainSubmit = async (e: React.FormEvent) => {
@@ -453,19 +482,9 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     try { 
       await supabase.from("stock_transactions").insert([{ medicine_id: String(visitorMedId), lot_id: String(visitorLotId), exp_date: lot.exp_date, action: 'out', amount: totalItems, staff_name: visitorName, status: 'visitor_note' }]); 
       alert("บันทึกโน้ตสำเร็จเรียบร้อย!"); 
-      setIsVisitorMainModalOpen(false); 
-      setVisitorMedId(""); 
-      setVisitorLotId(""); 
-      setVisitorAmount(""); 
-      setVisitorPackCount(""); 
-      setVisitorName(""); 
-      setVisitorSearchTerm(""); 
+      setIsVisitorMainModalOpen(false); setVisitorMedId(""); setVisitorLotId(""); setVisitorAmount(""); setVisitorPackCount(""); setVisitorName(""); setVisitorSearchTerm(""); 
       fetchVisitorNotes(); 
-    } catch (error: any) { 
-      alert("บันทึกไม่สำเร็จ: " + error.message); 
-    } finally { 
-      setVisitorSubmitting(false); 
-    }
+    } catch (error: any) { alert("บันทึกไม่สำเร็จ: " + error.message); } finally { setVisitorSubmitting(false); }
   };
 
   const handleImportExcel = async () => {
@@ -477,24 +496,13 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       for (let line of lines) { 
         const parts = line.split(",").map(p => p.trim()); 
         if (parts.length >= 1 && parts[0]) { 
-          const name = parts[0]; 
-          const hosxp_icode = parts[1] || ""; 
-          const note = parts[2] || ""; 
-          const cabinet_category = parts[3] || "1"; 
-          const min_stock = parseInt(parts[4]) || 0; 
+          const name = parts[0]; const hosxp_icode = parts[1] || ""; const note = parts[2] || ""; const cabinet_category = parts[3] || "1"; const min_stock = parseInt(parts[4]) || 0; 
           await supabase.from("medicines").insert([{ name, hosxp_icode, note, cabinet_category, min_stock, is_available: true }]); 
           count++; 
         } 
       }
-      alert(`นำเข้าสำเร็จ ${count} รายการ!`); 
-      setIsImportModalOpen(false); 
-      setImportText(""); 
-      fetchMedicines();
-    } catch (e: any) { 
-      alert("นำเข้าไม่สำเร็จ: " + e.message); 
-    } finally { 
-      setImporting(false); 
-    }
+      alert(`นำเข้าสำเร็จ ${count} รายการ!`); setIsImportModalOpen(false); setImportText(""); fetchMedicines();
+    } catch (e: any) { alert("นำเข้าไม่สำเร็จ: " + e.message); } finally { setImporting(false); }
   };
 
   const filteredMedicines = medicines
@@ -520,11 +528,8 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         const { error } = await supabase.from("medicines").insert([payload]); 
         if (error) throw error; 
       } 
-      setIsMedModalOpen(false); 
-      fetchMedicines(); 
-    } catch (error: any) { 
-      alert("บันทึกไม่สำเร็จ: " + error.message); 
-    } 
+      setIsMedModalOpen(false); fetchMedicines(); 
+    } catch (error: any) { alert("บันทึกไม่สำเร็จ: " + error.message); } 
   };
 
   const openAddMedModal = () => { 
@@ -541,12 +546,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
 
   const handleDeleteMed = async (id: string) => { 
     if (!confirm("ลบยานี้? (สต็อกทั้งหมดจะหายไป)")) return; 
-    try { 
-      await supabase.from("medicines").delete().eq("id", id); 
-      fetchMedicines(); 
-    } catch (error: any) { 
-      alert("ลบไม่สำเร็จ: " + error.message); 
-    } 
+    try { await supabase.from("medicines").delete().eq("id", id); fetchMedicines(); } catch (error: any) { alert("ลบไม่สำเร็จ: " + error.message); } 
   };
 
   const toggleAvailability = async (med: any) => { 
@@ -555,9 +555,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       const { error } = await supabase.from("medicines").update({ is_available: newVal }).eq("id", med.id); 
       if (error) throw error; 
       fetchMedicines(); 
-    } catch (e: any) { 
-      alert("เปลี่ยนสถานะไม่สำเร็จ: " + e.message); 
-    } 
+    } catch (e: any) { alert("เปลี่ยนสถานะไม่สำเร็จ: " + e.message); } 
   };
 
   const handleUpdateStock = async (e: React.FormEvent) => {
@@ -566,17 +564,11 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     setIsSubmitting(true);
     if (inputMode === 'base') { 
       totalItems = parseInt(inputAmount); 
-      if (!totalItems || totalItems <= 0) { 
-        setIsSubmitting(false); 
-        return alert("ระบุจำนวนให้ถูกต้อง"); 
-      } 
+      if (!totalItems || totalItems <= 0) { setIsSubmitting(false); return alert("ระบุจำนวนให้ถูกต้อง"); } 
     } else { 
       const packs = parseFloat(inputPackCount); 
       const size = (stockAction === 'out' || stockInMode === 'existing') ? (selectedMed.medicine_lots || []).find((l: any) => l.id.toString() === selectedLotId)?.pack_size : parseInt(stockPackSize); 
-      if (!packs || packs <= 0 || !size || size <= 0) { 
-        setIsSubmitting(false); 
-        return alert("ระบุข้อมูลให้ครบถ้วน"); 
-      } 
+      if (!packs || packs <= 0 || !size || size <= 0) { setIsSubmitting(false); return alert("ระบุข้อมูลให้ครบถ้วน"); } 
       totalItems = Math.round(packs * size); 
     }
     try {
@@ -615,9 +607,25 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         const { error } = await supabase.from("medicine_lots").update({ current_stock: lotToDeduct.current_stock - totalItems }).eq("id", lotToDeduct.id); 
         if (error) throw error;
       }
+      
       const expD = (selectedMed.medicine_lots || []).find((l:any) => String(l.id) === String(finalLotId))?.exp_date || stockExpDate;
-      const txPayload: any = { medicine_id: String(selectedMed.id), lot_id: String(finalLotId), exp_date: expD, action: stockAction, amount: totalItems, staff_name: session.name, status: pending ? 'pending' : 'completed', edit_note: stockNote || null };
+      const txPayload: any = { 
+         medicine_id: String(selectedMed.id), 
+         lot_id: String(finalLotId), 
+         exp_date: expD, 
+         action: stockAction, 
+         amount: totalItems, 
+         staff_name: session.name, 
+         status: pending ? 'pending' : 'completed', 
+         edit_note: stockNote || null 
+      };
+      
+      // ถ้าระบุวันที่ทำรายการ ให้ใส่วันที่นั้นลงในฐานข้อมูล
+      if (txDate) {
+         txPayload.created_at = `${txDate}T12:00:00.000Z`;
+      }
       if (pending) txPayload.expected_date = expectedDate || null;
+      
       await supabase.from("stock_transactions").insert([txPayload]);
       await fetchMedicines(); 
       setIsStockModalOpen(false); 
@@ -629,62 +637,44 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           setHistoryRows(txs || []); 
         }
       }
-    } catch (error: any) { 
-      alert("อัปเดตสต็อกไม่สำเร็จ: " + error.message); 
-    } finally { 
-      setIsSubmitting(false); 
-    }
+    } catch (error: any) { alert("อัปเดตสต็อกไม่สำเร็จ: " + error.message); } finally { setIsSubmitting(false); }
   };
 
   const openStockModal = (med: any, action: 'in' | 'out') => { 
     setSelectedMed(med); 
     setStockAction(action); 
-    setInputMode('base'); 
-    setInputAmount(""); 
-    setInputPackCount(""); 
-    setStockExpDate(""); 
-    setSelectedLotId(""); 
-    setIsPendingStock(false); 
-    setExpectedDate(""); 
-    setStockNote(""); 
+    setInputMode('base'); setInputAmount(""); setInputPackCount(""); 
+    
+    // ตั้งค่าเริ่มต้นวันที่ทำรายการเป็นวันที่ปัจจุบัน (พยายามหลีกเลี่ยง Timezone issue)
+    const todayStr = new Date().toLocaleDateString('en-CA'); // คืนค่า format YYYY-MM-DD แบบ Local 
+    setTxDate(todayStr); 
+    
+    setStockExpDate(""); setSelectedLotId(""); setIsPendingStock(false); setExpectedDate(""); setStockNote(""); 
     if (action === 'in') { 
       if (med.medicine_lots && med.medicine_lots.length > 0) { 
         setStockInMode('existing'); 
         const firstLot = med.medicine_lots[0]; 
-        setSelectedLotId(firstLot.id.toString()); 
-        setStockPackSize(firstLot.pack_size.toString()); 
-        setStockUnitName(firstLot.unit_name); 
+        setSelectedLotId(firstLot.id.toString()); setStockPackSize(firstLot.pack_size.toString()); setStockUnitName(firstLot.unit_name); 
       } else { 
-        setStockInMode('new'); 
-        setStockPackSize("100"); 
-        setStockUnitName("'s"); 
+        setStockInMode('new'); setStockPackSize("100"); setStockUnitName("'s"); 
       } 
     } else { 
       if (med.medicine_lots && med.medicine_lots.length > 0) { 
-        const firstLot = med.medicine_lots[0]; 
-        setStockPackSize(firstLot.pack_size.toString()); 
-        setStockUnitName(firstLot.unit_name); 
+        const firstLot = med.medicine_lots[0]; setStockPackSize(firstLot.pack_size.toString()); setStockUnitName(firstLot.unit_name); 
       } else { 
-        setStockPackSize("100"); 
-        setStockUnitName("'s"); 
+        setStockPackSize("100"); setStockUnitName("'s"); 
       } 
     } 
     setIsStockModalOpen(true); 
   };
 
   const openHistoryModal = async (med: any) => { 
-    setHistoryMed(med); 
-    setIsHistoryModalOpen(true); 
-    setHistoryLoading(true); 
+    setHistoryMed(med); setIsHistoryModalOpen(true); setHistoryLoading(true); 
     try { 
       const { data, error } = await supabase.from("stock_transactions").select("*").eq("medicine_id", String(med.id)).order("created_at", { ascending: false }); 
       if (error) throw error; 
       setHistoryRows(data || []); 
-    } catch (error) { 
-      setHistoryRows([]); 
-    } finally { 
-      setHistoryLoading(false); 
-    } 
+    } catch (error) { setHistoryRows([]); } finally { setHistoryLoading(false); } 
   };
   
   const handleApprovePending = async (tx: any, setBtnDone?: (val: boolean) => void) => { 
@@ -708,25 +698,19 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       }
       if (setBtnDone) setBtnDone(true); 
       alert("นำยอดเข้าสต็อกสำเร็จ"); 
-    } catch (e: any) { 
-      alert("เกิดข้อผิดพลาด: " + e.message); 
-    } 
+    } catch (e: any) { alert("เกิดข้อผิดพลาด: " + e.message); } 
   };
 
   const formatHistoryDate = (iso: string) => { 
     try { 
       return new Date(iso).toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); 
-    } catch { 
-      return iso; 
-    } 
+    } catch { return iso; } 
   };
 
   const calculateMedStats = (med: any) => { 
     if (!globalStartDate || !globalEndDate) return { totalUsage: 0, target1Week: 0, target2Weeks: 0, daysDiff: 0 }; 
-    const start = new Date(globalStartDate); 
-    const end = new Date(globalEndDate); 
-    start.setHours(0, 0, 0, 0); 
-    end.setHours(23, 59, 59, 999); 
+    const start = new Date(globalStartDate); const end = new Date(globalEndDate); 
+    start.setHours(0, 0, 0, 0); end.setHours(23, 59, 59, 999); 
     let daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)); 
     if (daysDiff < 1) daysDiff = 1; 
     const medTx = allTransactions.filter(tx => { 
@@ -761,24 +745,14 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           const pSize = lotInfo?.pack_size || (med.medicine_lots?.[0]?.pack_size || 1);
           const pUnit = lotInfo?.unit_name || 'หน่วย';
 
-          if (!lotBalances[lotId]) {
-            lotBalances[lotId] = { exp: lotExp, qty: 0, packSize: pSize, unitName: pUnit };
-          }
-
-          if (tx.action === 'in') { 
-            runningBal += tx.amount; 
-            lotBalances[lotId].qty += tx.amount;
-          } 
-          else if (tx.action === 'out') { 
-            runningBal -= tx.amount; 
-            lotBalances[lotId].qty -= tx.amount;
-          } 
+          if (!lotBalances[lotId]) lotBalances[lotId] = { exp: lotExp, qty: 0, packSize: pSize, unitName: pUnit };
+          if (tx.action === 'in') { runningBal += tx.amount; lotBalances[lotId].qty += tx.amount; } 
+          else if (tx.action === 'out') { runningBal -= tx.amount; lotBalances[lotId].qty -= tx.amount; } 
           
           const formatPrintPack = (amt: number, size: number, unit: string) => { 
             const unitStr = unit === "'s" ? "เม็ด" : unit;
             if(size <= 1 || amt === 0) return `${amt} ${unitStr}`; 
-            const p = Math.floor(amt / size); 
-            const r = amt % size; 
+            const p = Math.floor(amt / size); const r = amt % size; 
             return p === 0 ? `${r} ${unitStr}` : `${p} กล่อง × ${size} ${unitStr}${r > 0 ? ` (เศษ ${r} ${unitStr})` : ''}`; 
           }; 
           
@@ -786,44 +760,58 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           let lotBreakdown: string[] = [];
           if (activeLots.length > 0) {
             lotBreakdown = activeLots.map(l => {
-              const uStr = l.unitName === "'s" ? "เม็ด" : l.unitName;
-              return `EXP ${l.exp}: ${formatPrintPack(l.qty, l.packSize, l.unitName)}`;
+              return `${l.exp}: ${formatPrintPack(l.qty, l.packSize, l.unitName)}`;
             });
           }
-
-          return { 
-            ...tx, 
-            balanceAfter: runningBal, 
-            amountText: formatPrintPack(tx.amount, pSize, pUnit), 
-            balanceText: formatPrintPack(runningBal, pSize, pUnit),
-            lotBreakdown 
-          }; 
+          return { ...tx, balanceAfter: runningBal, amountText: formatPrintPack(tx.amount, pSize, pUnit), balanceText: formatPrintPack(runningBal, pSize, pUnit), lotBreakdown }; 
         }); 
-        
-        grouped[med.id] = { 
-          medName: med.name, hosxp: med.hosxp_icode, note: med.note, 
-          transactions: processedTxs.reverse() 
-        }; 
+        grouped[med.id] = { medName: med.name, hosxp: med.hosxp_icode, note: med.note, transactions: processedTxs.reverse() }; 
       }); 
       
-      setPrintData(grouped); 
-      setShowPrintView(true); 
-      setIsReportModalOpen(false); 
-    } catch(e: any) { 
-      alert("เกิดข้อผิดพลาดในการดึงข้อมูลรายงาน: " + e.message); 
-    } finally { 
-      setIsGeneratingReport(false); 
-    } 
+      setPrintData(grouped); setShowPrintView(true); setIsReportModalOpen(false); 
+    } catch(e: any) { alert("เกิดข้อผิดพลาดในการดึงข้อมูลรายงาน: " + e.message); } finally { setIsGeneratingReport(false); } 
   };
   
+  // ระบบโหลด Excel รายงานยอดคงเหลือ
+  const handleExportExcel = () => {
+    let csvContent = "\uFEFFตู้ยา,รหัสยา,ชื่อยา,ยอดคงเหลือรวม,หน่วยนับ,หมายเหตุ\n";
+    categoriesList.forEach(cat => {
+        const meds = medicines.filter(m => String(m.cabinet_category) === String(cat.id));
+        meds.forEach(m => {
+            let total = 0;
+            let unit = "";
+            (m.medicine_lots || []).forEach((l: any) => {
+                total += l.current_stock;
+                if (!unit) unit = l.unit_name === "'s" ? "เม็ด" : l.unit_name;
+            });
+            const safeName = `"${m.name.replace(/"/g, '""')}"`;
+            const safeNote = `"${(m.note || '').replace(/"/g, '""')}"`;
+            csvContent += `${cat.name},${m.hosxp_icode || '-'},${safeName},${total},${unit},${safeNote}\n`;
+        });
+    });
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const dateStr = new Date().toLocaleDateString('th-TH').replace(/\//g, '-');
+    link.setAttribute("download", `รายงานคงเหลือยา_${dateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleGenerateQRPrint = () => { 
     let medsToPrint = medicines; 
     if (qrTargetCategory !== "all") medsToPrint = medsToPrint.filter(m => String(m.cabinet_category) === String(qrTargetCategory)); 
     if (qrTargetId !== "all") medsToPrint = medsToPrint.filter(m => m.id.toString() === qrTargetId); 
-    setQrPrintData(medsToPrint); 
-    setShowQRPrintView(true); 
-    setIsQRModalOpen(false); 
+    setQrPrintData(medsToPrint); setShowQRPrintView(true); setIsQRModalOpen(false); 
   };
+
+  // กรองโน้ตผู้มาเยือนตาม Tab
+  const filteredVisitorNotes = visitorNotes.filter(n => 
+      visitorListMode === 'pending' ? n.status === 'visitor_note' : n.status === 'visitor_acknowledged'
+  );
+  const pendingVisitorCount = visitorNotes.filter(n => n.status === 'visitor_note').length;
 
   if (showPrintView) return ( 
     <div className="bg-white min-h-screen text-black print:p-0 p-8">
@@ -853,7 +841,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                       <th className="border border-gray-400 p-2 text-center text-black font-bold">ตัดจ่าย</th>
                       <th className="border border-gray-400 p-2 text-center text-black font-bold min-w-[160px]">ยอดยกไป (คงเหลือ)</th>
                       <th className="border border-gray-400 p-2 text-black font-bold">ผู้ดำเนินการ</th>
-                      <th className="border border-gray-400 p-2 text-black font-bold">หมายเหตุ (EXP)</th>
+                      <th className="border border-gray-400 p-2 text-black font-bold">หมายเหตุ (Exp)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -866,14 +854,12 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                            <div className="text-black font-bold">{tx.balanceText}</div>
                            {tx.lotBreakdown && tx.lotBreakdown.length > 0 && (
                              <div className="text-[10px] text-gray-700 font-medium mt-1 pt-1 border-t border-gray-300 text-left w-fit mx-auto leading-tight whitespace-nowrap">
-                                {tx.lotBreakdown.map((txt: string, i: number) => (
-                                   <div key={i}>• {txt}</div>
-                                ))}
+                                {tx.lotBreakdown.map((txt: string, i: number) => <div key={i}>• {txt}</div>)}
                              </div>
                            )}
                         </td>
                         <td className="border border-gray-400 p-2 text-black align-top">{tx.staff_name}</td>
-                        <td className="border border-gray-400 p-2 text-black text-xs align-top">EXP: {tx.lotExp} {tx.edit_note ? `[${tx.edit_note}]` : ''}</td>
+                        <td className="border border-gray-400 p-2 text-black text-xs align-top">{tx.lotExp !== 'N/A' ? tx.lotExp : ''} {tx.edit_note ? `[${tx.edit_note}]` : ''}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -891,15 +877,12 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       <div className="max-w-5xl mx-auto">
         <div className="print:hidden flex justify-between mb-6 bg-gray-100 p-4 rounded-xl">
           <h1 className="text-xl font-bold">พิมพ์ QR Code</h1>
-          <div className="flex gap-3">
-            <button onClick={() => setShowQRPrintView(false)} className="px-4 py-2 border rounded-lg">ปิด</button>
-            <button onClick={() => window.print()} className="px-4 py-2 bg-blue-600 text-white rounded-lg flex gap-2"><Printer size={18}/> พิมพ์</button>
-          </div>
+          <div className="flex gap-3"><button onClick={() => setShowQRPrintView(false)} className="px-4 py-2 border rounded-lg">ปิด</button><button onClick={() => window.print()} className="px-4 py-2 bg-blue-600 text-white rounded-lg flex gap-2"><Printer size={18}/> พิมพ์</button></div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {qrPrintData.map((med) => (
             <div key={med.id} className="border-2 border-dashed border-gray-400 p-4 flex flex-col items-center justify-center text-center">
-              <QRCodeSVG value={`${typeof window !== 'undefined' ? window.location.origin : ''}/medicine/${med.id}`} size={100} />
+              <QRCodeSVG value={`${typeof window !== 'undefined' ? window.location.origin : ''}/?scan=${med.id}`} size={100} />
               <div className="mt-3 font-bold text-sm leading-tight text-black">{med.name}</div>
             </div>
           ))}
@@ -911,15 +894,12 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#e0eaf5] via-[#f0f4f8] to-[#e8ebf2] p-2 md:p-8 font-sans">
       <div className="max-w-[1400px] mx-auto space-y-4 md:space-y-6">
+        
         {/* Header - Glassmorphism */}
         <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-white/70 backdrop-blur-xl p-4 md:p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/80">
           <div className="w-full xl:w-auto flex justify-between items-start md:items-center">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-extrabold text-slate-800 leading-tight tracking-tight">ระบบคลังยา <br className="md:hidden" /><span className="text-base md:text-2xl font-semibold text-slate-500 opacity-80">(จัดล็อต EXP)</span></h1>
-            </div>
-            <div className="text-right md:hidden">
-              <div className="text-[10px] font-medium text-slate-700 flex items-center justify-end gap-1 bg-white/80 px-3 py-1.5 rounded-full border border-white shadow-sm"><User size={12} className="text-slate-400" /> {session.name}</div>
-            </div>
+            <div><h1 className="text-2xl md:text-3xl font-extrabold text-slate-800 leading-tight tracking-tight">ระบบคลังยา <br className="md:hidden" /><span className="text-base md:text-2xl font-semibold text-slate-500 opacity-80">(จัดล็อต EXP)</span></h1></div>
+            <div className="text-right md:hidden"><div className="text-[10px] font-medium text-slate-700 flex items-center justify-end gap-1 bg-white/80 px-3 py-1.5 rounded-full border border-white shadow-sm"><User size={12} className="text-slate-400" /> {session.name}</div></div>
           </div>
           <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto mt-2 xl:mt-0">
             <button onClick={() => setIsVisitorMainModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><MessageSquareText size={16} /> โน้ตผู้มาเยือน</button>
@@ -928,81 +908,126 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
             <button onClick={() => setIsReportModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-blue-50/80 text-blue-700 border border-blue-200/50 hover:bg-blue-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><FileText size={16} /> พิมพ์รายงาน</button>
             <button onClick={() => setIsImportModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Upload size={16} /> นำเข้า</button>
             <button onClick={openAddMedModal} className="flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-3.5 py-2 rounded-xl font-medium text-xs md:text-sm shadow-md shadow-emerald-200 transition-all"><Plus size={18} /> เพิ่มยา</button>
-            {session.name === "Admin" && (
-              <button onClick={() => setIsStaffAdminModalOpen(true)} title="จัดการเจ้าหน้าที่" className="flex items-center gap-1.5 bg-purple-50/80 text-purple-700 border border-purple-200 hover:bg-purple-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Users size={16}/> จัดการเจ้าหน้าที่</button>
-            )}
+            {session.name === "Admin" && (<button onClick={() => setIsStaffAdminModalOpen(true)} title="จัดการเจ้าหน้าที่" className="flex items-center gap-1.5 bg-purple-50/80 text-purple-700 border border-purple-200 hover:bg-purple-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Users size={16}/> จัดการเจ้าหน้าที่</button>)}
             <button onClick={() => setIsChangePwdModalOpen(true)} title="เปลี่ยนรหัสผ่าน" className="p-2 bg-white/50 border border-white text-slate-500 rounded-xl hover:bg-blue-50 hover:text-blue-500 shadow-sm transition-all"><KeyRound size={18} /></button>
             <button onClick={onLogout} title="ออกจากระบบ" className="p-2 bg-white/50 border border-white text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-500 shadow-sm transition-all"><LogOut size={18} /></button>
           </div>
         </div>
 
-        {/* แจ้งเตือนผู้มาเยือน */}
-        {visitorNotes.length > 0 && (
+        {/* แจ้งเตือนผู้มาเยือน (รวมหน้าประวัติในตัว) */}
+        {(visitorNotes.length > 0) && (
           <div className="bg-amber-50/80 backdrop-blur-xl rounded-3xl shadow-sm border border-amber-200/50 p-4 md:p-5 w-full transition-all">
-             <div className="flex items-center gap-2 mb-3 text-sm font-bold text-amber-700">
-                <Bell size={18} /> แจ้งเตือน: โน้ตจากผู้มาเยือนที่สแกน QR ({visitorNotes.length})
+             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3 border-b border-amber-200/50 pb-3">
+                <div className="flex items-center gap-2 text-sm font-bold text-amber-700">
+                   <Bell size={18} /> แจ้งเตือน: โน้ตจากผู้มาเยือนที่สแกน QR {pendingVisitorCount > 0 ? `(${pendingVisitorCount})` : ''}
+                </div>
+                <select className="bg-white border border-amber-200 text-sm font-bold text-amber-800 p-2 rounded-xl outline-none shadow-sm" value={visitorListMode} onChange={(e) => setVisitorListMode(e.target.value as 'pending'|'history')}>
+                   <option value="pending">รอตรวจสอบรับทราบ ({pendingVisitorCount})</option>
+                   <option value="history">ประวัติที่รับทราบแล้ว</option>
+                </select>
              </div>
-             <div className="max-h-48 overflow-y-auto space-y-2.5 pr-2">
-                {visitorNotes.map(note => {
-                   const med = medicines.find(m => m.id.toString() === note.medicine_id);
-                   const medName = med?.name || 'ไม่ทราบชื่อยา';
-                   const lotInfo = (med?.medicine_lots || []).find((l:any) => l.id.toString() === note.lot_id?.toString());
-                   const pSize = lotInfo?.pack_size || 1; const pUnit = lotInfo?.unit_name || 'หน่วย';
-                   const formattedAmount = formatBoxString(note.amount, pSize, pUnit);
+             
+             {filteredVisitorNotes.length === 0 ? (
+                <div className="text-center py-6 text-amber-600/70 font-medium text-sm">ไม่มีรายการในหมวดหมู่นี้</div>
+             ) : (
+                 <div className="max-h-60 overflow-y-auto space-y-2.5 pr-2">
+                    {filteredVisitorNotes.map(note => {
+                       const med = medicines.find(m => m.id.toString() === note.medicine_id);
+                       const medName = med?.name || 'ไม่ทราบชื่อยา';
+                       const lotInfo = (med?.medicine_lots || []).find((l:any) => l.id.toString() === note.lot_id?.toString());
+                       const pSize = lotInfo?.pack_size || 1; const pUnit = lotInfo?.unit_name || 'หน่วย';
+                       const formattedAmount = formatBoxString(note.amount, pSize, pUnit);
 
-                   return (
-                     <div key={note.id} className="flex justify-between items-center bg-white/90 p-3.5 rounded-2xl border border-amber-100 shadow-sm">
-                        <div>
-                           <div className="text-sm font-extrabold text-slate-800">{medName}</div>
-                           <div className="text-xs text-slate-700 mt-1 font-medium">
-                              นำออก <span className="font-bold text-red-600">{formattedAmount}</span> (รวม {note.amount} {pUnit})
-                           </div>
-                           <div className="text-[11px] font-bold text-rose-500 mt-1 flex items-center gap-1">
-                              <CalendarDays size={12}/> EXP: {note.exp_date}
-                           </div>
-                           <div className="text-[10px] text-slate-500 mt-2 font-medium bg-slate-50 px-2 py-1 rounded-lg inline-block border border-slate-100">
-                              ผู้บันทึก: <span className="font-bold text-slate-700">{note.staff_name}</span> | {formatHistoryDate(note.created_at)}
-                           </div>
-                        </div>
-                        <button onClick={() => handleAcknowledgeNote(note.id)} title="รับทราบข้อความนี้" className="p-3 bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white border border-emerald-200 rounded-xl transition-all shadow-sm flex items-center justify-center">
-                           <Check size={22} />
-                        </button>
-                     </div>
-                   )
-                })}
-             </div>
+                       return (
+                         <div key={note.id} className="flex justify-between items-center bg-white/90 p-3.5 rounded-2xl border border-amber-100 shadow-sm opacity-95">
+                            <div>
+                               <div className="text-sm font-extrabold text-slate-800">{medName}</div>
+                               <div className="text-xs text-slate-700 mt-1 font-medium">นำออก <span className="font-bold text-red-600">{formattedAmount}</span> (รวม {note.amount} {pUnit})</div>
+                               <div className="text-[11px] font-bold text-rose-500 mt-1 flex items-center gap-1"><CalendarDays size={12}/> EXP: {note.exp_date}</div>
+                               <div className="text-[10px] text-slate-500 mt-2 font-medium bg-slate-50 px-2 py-1 rounded-lg inline-block border border-slate-100">
+                                  ผู้บันทึก: <span className="font-bold text-slate-700">{note.staff_name}</span> | {formatHistoryDate(note.created_at)}
+                               </div>
+                            </div>
+                            {note.status === 'visitor_note' ? (
+                               <button onClick={() => handleAcknowledgeNote(note.id)} title="รับทราบข้อความนี้" className="p-3 bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white border border-emerald-200 rounded-xl transition-all shadow-sm flex items-center justify-center"><Check size={22} /></button>
+                            ) : (
+                               <div className="px-3 py-1.5 bg-slate-100 text-slate-500 font-bold text-xs rounded-xl border border-slate-200 flex items-center gap-1"><Check size={14} /> รับทราบแล้ว</div>
+                            )}
+                         </div>
+                       )
+                    })}
+                 </div>
+             )}
           </div>
         )}
 
-        {/* Categories - Glassmorphism Pastels */}
+        {/* หมวดหมู่ */}
         <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/80 p-4 md:p-5 w-full">
-          <div className="flex items-center gap-2 mb-4 text-sm font-bold text-slate-500"><LayoutGrid size={18} /> หมวดหมู่ตู้ยา</div>
           <div className="flex flex-wrap gap-2.5 mb-4">
-            <button onClick={() => handleSelectCategory("all")} className={`px-4 py-2 rounded-2xl text-sm font-bold border backdrop-blur-md transition-all ${selectedCategory === "all" ? "bg-slate-800 text-white border-slate-700 shadow-md" : "bg-white/60 text-slate-600 border-white hover:bg-white/90 shadow-sm"}`}>ทั้งหมด</button>
+            <button onClick={() => handleSelectCategory("all")} className={`px-4 py-2 rounded-2xl text-sm font-bold border transition-all ${selectedCategory === "all" ? "bg-slate-800 text-white shadow-md" : "bg-white/60 text-slate-600 hover:bg-white/90"}`}>ทั้งหมด</button>
             {categoriesList?.map((cat, index) => {
-              const baseColor = CAT_COLORS[index % CAT_COLORS.length];
-              const isActive = selectedCategory === cat.id;
-              const activeClass = isActive ? `${baseColor} ring-2 ring-offset-2 ring-blue-300 font-extrabold transform scale-105` : "bg-white/60 text-slate-600 border-white hover:bg-white/90 font-medium shadow-sm";
+              const activeClass = selectedCategory === cat.id ? `${CAT_COLORS[index % CAT_COLORS.length]} ring-2 ring-blue-300 font-extrabold scale-105` : "bg-white/60 text-slate-600 hover:bg-white/90";
               return (
-              <div key={cat.id} className={`flex items-center gap-0.5 rounded-2xl border backdrop-blur-md px-1 transition-all duration-200 ${activeClass}`}>
+              <div key={cat.id} className={`flex items-center gap-0.5 rounded-2xl border px-1 transition-all ${activeClass}`}>
                 <button onClick={() => handleSelectCategory(cat.id)} className="pl-3 pr-2 py-2 text-sm">{cat.name}</button>
-                <button onClick={() => { setEditingCategoryId(cat.id); setCategoryNameInput(cat.name); }} title="แก้ไขชื่อหมวดหมู่" className={`p-1 rounded-xl transition-colors ${isActive ? "text-slate-700 hover:bg-white/30" : "text-slate-400 hover:text-blue-600 hover:bg-white"}`}><Edit size={14} /></button>
+                <button onClick={() => { setEditingCategoryId(cat.id); setCategoryNameInput(cat.name); }} className={`p-1 rounded-xl transition-colors ${selectedCategory === cat.id ? "text-slate-700" : "text-slate-400"}`}><Edit size={14} /></button>
               </div>
             )})}
-            <button onClick={handleAddCategory} className="px-4 py-2 rounded-2xl border-2 border-dashed border-slate-300 text-slate-500 hover:bg-white/60 text-sm font-semibold flex items-center gap-1.5 transition-all"><Plus size={16} /> เพิ่มตู้ยา</button>
+            <button onClick={handleAddCategory} className="px-4 py-2 rounded-2xl border-2 border-dashed border-slate-300 text-slate-500 text-sm font-semibold flex gap-1.5"><Plus size={16} /> เพิ่มตู้</button>
           </div>
           <div className="flex flex-col md:flex-row gap-3 mt-4 items-center">
-            <div className="relative flex-1 w-full"><Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" /><input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="ค้นหาชื่อยา, HosXP หรือหมายเหตุ..." className="w-full bg-white/50 border border-white rounded-2xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:ring-blue-400 text-slate-700 shadow-sm transition-all" /></div>
-            <div className="relative w-full md:w-auto shrink-0 flex items-center gap-2 bg-white/50 border border-white rounded-2xl px-4 py-1 shadow-sm transition-all"><ArrowUpDown size={16} className="text-slate-400 shrink-0"/>
-              <select className="w-full bg-transparent outline-none text-sm font-medium text-slate-600 py-2 cursor-pointer" value={sortOrder} onChange={(e) => setSortOrder(e.target.value as 'recent'|'alpha')}>
-                <option value="alpha">เรียงตามตัวอักษร (A-Z, ก-ฮ)</option>
-                <option value="recent">เรียงตามแก้ไขล่าสุด (ใหม่-เก่า)</option>
-              </select>
-            </div>
+            <div className="relative flex-1 w-full"><Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" /><input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="ค้นหาชื่อยา..." className="w-full bg-white/50 border border-white rounded-2xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:ring-blue-400 text-slate-700" /></div>
+            <select className="w-full md:w-auto bg-white/50 rounded-2xl px-4 py-3 text-sm" value={sortOrder} onChange={(e) => setSortOrder(e.target.value as 'recent'|'alpha')}><option value="alpha">เรียง (ก-ฮ)</option><option value="recent">แก้ไขล่าสุด</option></select>
           </div>
         </div>
 
-        {/* Modal: EXP Dashboard */}
+        {/* รายการยา */}
+        {loading ? (<div className="p-10 text-center text-slate-400 bg-white/60 backdrop-blur-xl rounded-3xl">กำลังโหลด...</div>) : filteredMedicines.length === 0 ? (<div className="p-10 text-center text-slate-400 bg-white/60 backdrop-blur-xl rounded-3xl">ไม่พบรายการ</div>) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5">
+            {filteredMedicines.map((med) => {
+              const activeLots = (med.medicine_lots || []).filter((l: any) => l.current_stock > 0).sort((a: any, b: any) => new Date(a.exp_date).getTime() - new Date(b.exp_date).getTime());
+              const isAvail = med.is_available !== false;
+              return (
+                <div key={med.id} className={`bg-white/70 backdrop-blur-xl rounded-3xl shadow-sm border p-5 flex flex-col gap-3.5 transition-all ${!isAvail ? 'border-red-300/80 bg-red-50/70' : 'border-white/80 hover:shadow-md'}`}>
+                  <div className="flex justify-between items-start border-b border-white/50 pb-3">
+                    <div className="w-full">
+                      <div onClick={() => openHistoryModal(med)} className="font-extrabold text-slate-800 text-lg cursor-pointer hover:text-blue-500 leading-tight">{med.name}</div>
+                      <div className="text-xs text-slate-500 mt-1.5">รหัส: <span className="font-bold">{med.hosxp_icode || "-"}</span></div>
+                    </div>
+                    <div className="flex flex-col gap-2 w-[72px]">
+                      <div className="flex gap-1.5"><button onClick={() => openEditMedModal(med)} className="flex-1 p-2 bg-white/60 rounded-xl text-slate-500 shadow-sm"><Edit size={14}/></button><button onClick={() => handleDeleteMed(med.id)} className="flex-1 p-2 bg-white/60 rounded-xl text-slate-500 shadow-sm"><Trash2 size={14}/></button></div>
+                      <button onClick={() => toggleAvailability(med)} className={`w-full py-1.5 text-[10px] font-bold rounded-xl shadow-sm ${isAvail ? 'bg-emerald-50 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{isAvail ? "เบิกได้" : "เป็น 0"}</button>
+                    </div>
+                  </div>
+                  <div>
+                     <div className="text-[11px] font-bold text-slate-500 mb-2">คงเหลือ (ตาม EXP):</div>
+                     {activeLots.length === 0 ? <span className="text-red-500 text-xs bg-red-50/80 px-4 py-1.5 rounded-xl border border-red-200">สต็อกหมด</span> : (
+                       <div className="flex flex-col gap-2">
+                          {activeLots.map((lot: any) => {
+                            const p = Math.floor(lot.current_stock / lot.pack_size); const r = lot.current_stock % lot.pack_size;
+                            return (
+                              <div key={lot.id} className="flex justify-between items-center bg-white/50 border p-2.5 rounded-2xl">
+                                <span className="text-[10px] font-bold text-rose-500">EXP: {lot.exp_date}</span>
+                                <div className="flex items-baseline gap-1 text-sm"><span className="font-extrabold text-emerald-600">{p}</span><span className="text-slate-400 text-[9px]">x</span><span className="text-slate-700 font-bold">{lot.pack_size}</span>{r > 0 && <span className="text-amber-500 text-[9px] ml-1">เศษ {r}</span>}</div>
+                              </div>
+                            )
+                          })}
+                       </div>
+                     )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-auto pt-2">
+                      <button onClick={() => openStockModal(med, 'in')} className="flex justify-center gap-1.5 p-2.5 bg-emerald-50/80 text-emerald-700 rounded-xl border border-emerald-100/50 font-bold text-xs shadow-sm hover:bg-emerald-100"><PackagePlus size={16} /> รับเข้า</button>
+                      <button onClick={() => openStockModal(med, 'out')} className="flex justify-center gap-1.5 p-2.5 bg-red-50/80 text-red-700 rounded-xl border border-red-100/50 font-bold text-xs shadow-sm hover:bg-red-100"><PackageMinus size={16} /> ตัดจ่าย</button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* MODAL SECTION: โค้ด Modal ทั้งหมดต้องอยู่ที่นี่ เพื่อไม่ให้หายไป */}
+        
+        {/* Modal: แจ้งเตือนยาใกล้ EXP */}
         {isExpDashboardOpen && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[80]">
             <div className="bg-white/95 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-3xl p-6 relative flex flex-col h-full max-h-[85vh]">
@@ -1013,19 +1038,12 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
 
                 <div className="flex flex-wrap gap-2 py-4 border-b border-slate-100 shrink-0">
                   {[
-                    { label: "6 เดือน (180 วัน)", val: 180 },
-                    { label: "2 เดือน (60 วัน)", val: 60 },
-                    { label: "1 เดือน (30 วัน)", val: 30 },
-                    { label: "15 วัน", val: 15 },
-                    { label: "7 วัน", val: 7 },
-                    { label: "2 วัน", val: 2 },
+                    { label: "6 เดือน (180 วัน)", val: 180 }, { label: "2 เดือน (60 วัน)", val: 60 },
+                    { label: "1 เดือน (30 วัน)", val: 30 }, { label: "15 วัน", val: 15 },
+                    { label: "7 วัน", val: 7 }, { label: "2 วัน", val: 2 },
                     { label: "หมดอายุวันนี้ (0 วัน)", val: 0 },
                   ].map(tab => (
-                    <button
-                      key={tab.val}
-                      onClick={() => setExpFilterDays(tab.val as any)}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${expFilterDays === tab.val ? 'bg-rose-600 text-white border-rose-600 shadow-md' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-                    >
+                    <button key={tab.val} onClick={() => setExpFilterDays(tab.val)} className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${expFilterDays === tab.val ? 'bg-rose-600 text-white border-rose-600 shadow-md' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
                       {tab.label}
                     </button>
                   ))}
@@ -1035,7 +1053,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                   {(() => {
                       const today = new Date();
                       today.setHours(0,0,0,0);
-
                       const matchedLots: any[] = [];
                       medicines.forEach(med => {
                         (med.medicine_lots || []).forEach((lot: any) => {
@@ -1044,7 +1061,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                               expDate.setHours(0,0,0,0);
                               const diffTime = expDate.getTime() - today.getTime();
                               const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
                               let isMatch = false;
                               if (expFilterDays === 180 && diffDays <= 180 && diffDays >= 0) isMatch = true;
                               else if (expFilterDays === 60 && diffDays <= 60 && diffDays >= 0) isMatch = true;
@@ -1053,35 +1069,22 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                               else if (expFilterDays === 7 && diffDays <= 7 && diffDays >= 0) isMatch = true;
                               else if (expFilterDays === 2 && diffDays <= 2 && diffDays >= 0) isMatch = true;
                               else if (expFilterDays === 0 && diffDays === 0) isMatch = true;
-
-                              if (isMatch) {
-                                  matchedLots.push({ ...med, lot, diffDays });
-                              }
+                              if (isMatch) matchedLots.push({ ...med, lot, diffDays });
                             }
                         });
                       });
-
                       matchedLots.sort((a, b) => a.diffDays - b.diffDays);
-
-                      if (matchedLots.length === 0) {
-                        return <div className="text-center py-12 text-slate-400 font-medium">ไม่พบรายการยาที่ใกล้หมดอายุในเงื่อนไขนี้ 🎉</div>;
-                      }
-
+                      if (matchedLots.length === 0) return <div className="text-center py-12 text-slate-400 font-medium">ไม่พบรายการยาที่ใกล้หมดอายุในเงื่อนไขนี้ 🎉</div>;
                       return matchedLots.map((item, idx) => {
                         const fullPacks = Math.floor(item.lot.current_stock / item.lot.pack_size);
                         const remainder = item.lot.current_stock % item.lot.pack_size;
                         const unitStr = item.lot.unit_name === "'s" ? "เม็ด" : item.lot.unit_name;
-
                         return (
                           <div key={`${item.id}-${item.lot.id}-${idx}`} className="flex flex-col md:flex-row md:justify-between md:items-center bg-white border border-rose-100 p-4 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
                               <div className="mb-2 md:mb-0">
                                 <div className="font-extrabold text-slate-800 text-sm md:text-base">{item.name} <span className="text-xs font-normal text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full ml-1">ตู้: {getCategoryName(item.cabinet_category)}</span></div>
-                                <div className="text-xs text-slate-600 mt-1.5 font-medium">
-                                    คงเหลือ: <span className="font-bold text-emerald-600">{fullPacks > 0 ? `${fullPacks} กล่อง × ${item.lot.pack_size} ${unitStr}` : ''} {remainder > 0 ? `(เศษ ${remainder} ${unitStr})` : ''}</span> <span className="text-blue-500 ml-1">(รวม {item.lot.current_stock} {unitStr})</span>
-                                </div>
-                                <div className="text-[11px] font-bold text-rose-600 mt-1.5 flex items-center gap-1">
-                                    <CalendarDays size={12}/> วันหมดอายุ (EXP): {item.lot.exp_date}
-                                </div>
+                                <div className="text-xs text-slate-600 mt-1.5 font-medium">คงเหลือ: <span className="font-bold text-emerald-600">{fullPacks > 0 ? `${fullPacks} กล่อง × ${item.lot.pack_size} ${unitStr}` : ''} {remainder > 0 ? `(เศษ ${remainder} ${unitStr})` : ''}</span> <span className="text-blue-500 ml-1">(รวม {item.lot.current_stock} {unitStr})</span></div>
+                                <div className="text-[11px] font-bold text-rose-600 mt-1.5 flex items-center gap-1"><CalendarDays size={12}/> วันหมดอายุ (EXP): {item.lot.exp_date}</div>
                               </div>
                               <div className="shrink-0 text-left md:text-right">
                                 <span className={`px-4 py-1.5 rounded-full text-xs font-bold shadow-sm inline-block ${item.diffDays <= 7 ? 'bg-red-500 text-white animate-pulse border border-red-600' : 'bg-amber-100 text-amber-800 border border-amber-200'}`}>
@@ -1097,7 +1100,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           </div>
         )}
 
-        {/* Edit Category Name Modal */}
+        {/* Modal: แก้ไขชื่อตู้ยา */}
         {editingCategoryId !== null && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[75]">
              <div className="bg-white/90 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-sm p-6 relative">
@@ -1117,7 +1120,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
              <div className="bg-white/95 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-lg p-6 relative max-h-[85vh] overflow-y-auto">
                 <button onClick={() => setIsStaffAdminModalOpen(false)} className="absolute top-4 right-4 p-1 hover:bg-slate-100 rounded-xl"><X size={20} className="text-slate-400"/></button>
                 <h2 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2"><Users size={22} className="text-purple-600"/> จัดการรายชื่อเจ้าหน้าที่</h2>
-                
                 <form onSubmit={handleAdminAddStaff} className="mb-6 bg-purple-50/60 p-4 rounded-2xl border border-purple-100 space-y-3">
                    <h3 className="text-sm font-bold text-purple-800 flex items-center gap-1.5"><UserPlus size={16}/> เพิ่มเจ้าหน้าที่ใหม่</h3>
                    <div className="flex gap-2">
@@ -1125,21 +1127,14 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                       <button type="submit" className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm">เพิ่ม</button>
                    </div>
                 </form>
-
                 <div className="space-y-2">
                    <h3 className="text-sm font-bold text-slate-700 mb-2">รายชื่อเจ้าหน้าที่ทั้งหมดในระบบ</h3>
                    {staffRows.map(st => (
                       <div key={st.id} className="flex justify-between items-center bg-slate-50 border border-slate-200 p-3 rounded-2xl">
                          <span className="font-semibold text-sm text-slate-800">{st.name} {st.name === 'Admin' && <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full ml-1 font-bold">Admin</span>}</span>
                          <div className="flex items-center gap-2">
-                            <button onClick={() => handleAdminResetStaffPwd(st.id, st.name)} className="bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1">
-                               <KeyRound size={12}/> เปลี่ยนรหัสผ่าน
-                            </button>
-                            {st.name !== 'Admin' && (
-                               <button onClick={() => handleAdminDeleteStaff(st.id, st.name)} title="ลบผู้ใช้" className="bg-red-50 border border-red-200 hover:bg-red-500 hover:text-white text-red-600 p-2 rounded-xl transition-all shadow-sm">
-                                  <Trash2 size={14}/>
-                               </button>
-                            )}
+                            <button onClick={() => handleAdminResetStaffPwd(st.id, st.name)} className="bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1"><KeyRound size={12}/> เปลี่ยนรหัสผ่าน</button>
+                            {st.name !== 'Admin' && (<button onClick={() => handleAdminDeleteStaff(st.id, st.name)} title="ลบผู้ใช้" className="bg-red-50 border border-red-200 hover:bg-red-500 hover:text-white text-red-600 p-2 rounded-xl transition-all shadow-sm"><Trash2 size={14}/></button>)}
                          </div>
                       </div>
                    ))}
@@ -1148,7 +1143,211 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           </div>
         )}
 
-        {/* Modal: Visitor Note Main Page */}
+        {/* Modal: Change Password */}
+        {isChangePwdModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[80]">
+            <div className="bg-white/90 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden p-6 text-center relative">
+               <button onClick={() => setIsChangePwdModalOpen(false)} className="absolute top-4 right-4 p-1 hover:bg-white/60 rounded-xl"><X size={20} className="text-slate-400"/></button>
+               <div className="w-16 h-16 bg-blue-100/80 text-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm border border-blue-200/50"><KeyRound size={32}/></div>
+               <h2 className="text-lg font-bold text-slate-800 mb-4">เปลี่ยนรหัสผ่าน</h2>
+               <form onSubmit={handleChangePassword} className="space-y-4 text-left">
+                  <div><label className="block text-sm font-medium mb-1.5 text-slate-600">รหัสผ่านเดิม</label><input type="password" required className="w-full bg-white/50 border border-white rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 shadow-sm" value={oldPwd} onChange={(e) => setOldPwd(e.target.value)} /></div>
+                  <div><label className="block text-sm font-medium mb-1.5 text-slate-600">รหัสผ่านใหม่</label><input type="password" required className="w-full bg-white/50 border border-white rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 shadow-sm" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} /></div>
+                  <div><label className="block text-sm font-medium mb-1.5 text-slate-600">ยืนยันรหัสผ่านใหม่</label><input type="password" required className="w-full bg-white/50 border border-white rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 shadow-sm" value={newPwd2} onChange={(e) => setNewPwd2(e.target.value)} /></div>
+                  {pwdError && <p className="text-red-500 text-sm">{pwdError}</p>}
+                  <button type="submit" disabled={isSubmitting} className="w-full bg-blue-500 hover:bg-blue-600 text-white p-3.5 rounded-xl font-medium shadow-md transition-colors disabled:opacity-60">{isSubmitting ? "กำลังบันทึก..." : "ยืนยันการเปลี่ยนรหัสผ่าน"}</button>
+               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: เพิ่ม/แก้ไข ข้อมูลยา */}
+        {isMedModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
+            <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-white">
+              <div className="flex justify-between items-center p-5 md:p-6 border-b border-white/50 bg-white/40"><h2 className="text-lg md:text-xl font-bold text-slate-800">{isEditing ? 'แก้ไขข้อมูลยา' : 'เพิ่มรายการยาใหม่'}</h2><button onClick={() => setIsMedModalOpen(false)} className="p-1 hover:bg-white/60 rounded-xl transition-colors"><X size={22} className="text-slate-500" /></button></div>
+              <form onSubmit={handleSaveMedicine} className="p-5 md:p-6 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div><label className="block text-sm font-medium mb-1.5 text-slate-600">ชื่อยา *</label><input type="text" required className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400" value={medFormData.name} onChange={(e) => setMedFormData({ ...medFormData, name: e.target.value })} /></div>
+                  <div><label className="block text-sm font-medium mb-1.5 text-slate-600">รหัส HosXP</label><input type="text" className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400" value={medFormData.hosxp_icode} onChange={(e) => setMedFormData({ ...medFormData, hosxp_icode: e.target.value })} /></div>
+                </div>
+                <div><label className="block text-sm font-medium mb-1.5 text-slate-600">หมวดหมู่ตู้ยา</label><select className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 font-medium text-slate-700" value={medFormData.cabinet_category} onChange={(e) => setMedFormData({ ...medFormData, cabinet_category: e.target.value })}>{categoriesList?.map(cat => <option key={cat.id} value={cat.id.toString()}>{cat.name}</option>)}</select></div>
+                <div><label className="block text-sm font-medium mb-1.5 text-slate-600">หมายเหตุ</label><textarea className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400" rows={2} value={medFormData.note} onChange={(e) => setMedFormData({ ...medFormData, note: e.target.value })} /></div>
+                <div className="pt-4 flex gap-3"><button type="button" onClick={() => setIsMedModalOpen(false)} className="flex-1 bg-white/60 border border-white hover:bg-white/90 p-3.5 rounded-xl font-medium text-slate-600 shadow-sm">ยกเลิก</button><button type="submit" className="flex-1 bg-blue-500 hover:bg-blue-600 text-white p-3.5 rounded-xl font-medium shadow-md shadow-blue-200 transition-colors">{isEditing ? 'บันทึกการแก้ไข' : 'บันทึกยาใหม่'}</button></div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: นำเข้าข้อมูล (Import) */}
+        {isImportModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
+            <div className="bg-white/90 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden p-6">
+               <div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Upload size={20}/> นำเข้าข้อมูลยา</h2><button onClick={() => setIsImportModalOpen(false)}><X size={20} className="text-slate-400" /></button></div>
+               <p className="text-xs text-slate-500 mb-3">รูปแบบข้อมูลแต่ละบรรทัด (คั่นด้วยจุลภาค comma): <br/><code className="bg-slate-100 p-1 rounded text-slate-700">ชื่อยา, รหัสHosXP, หมายเหตุ, รหัสตู้ยา(ตัวเลข), สต็อกขั้นต่ำ</code></p>
+               <textarea rows={6} className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-blue-400 mb-4 shadow-sm font-mono" placeholder="พาราสเซทตามอล, P01, ยาแก้ปวด, 1, 10&#10;อม็อกซี่ซิลลิน, A02, ยาปฏิชีวนะ, 1, 5" value={importText} onChange={(e) => setImportText(e.target.value)} />
+               <div className="flex gap-3">
+                  <button onClick={() => setIsImportModalOpen(false)} className="flex-1 bg-slate-100 text-slate-700 p-3.5 rounded-xl font-medium shadow-sm">ยกเลิก</button>
+                  <button onClick={handleImportExcel} disabled={importing} className="flex-1 bg-amber-500 hover:bg-amber-600 text-white p-3.5 rounded-xl font-medium shadow-md transition-colors disabled:opacity-60">{importing ? "กำลังนำเข้า..." : "ยืนยันการนำเข้า"}</button>
+               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Report */}
+        {isReportModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
+            <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden border border-white">
+              <div className="flex justify-between items-center p-5 border-b border-white/50 bg-blue-50/50"><h2 className="text-lg font-bold flex items-center gap-2 text-blue-800"><FileText size={20} /> พิมพ์รายงาน/ดาวน์โหลด</h2><button onClick={() => setIsReportModalOpen(false)} className="p-1 hover:bg-white/60 rounded-xl"><X size={20} className="text-blue-400" /></button></div>
+              <div className="p-6 space-y-5">
+                <div className="bg-green-50 border border-green-200 p-4 rounded-2xl shadow-sm mb-4">
+                   <h3 className="text-sm font-bold text-green-800 mb-2">รายงานสรุปยอดคงเหลือประจำเดือน</h3>
+                   <p className="text-xs text-green-700 mb-3">ดาวน์โหลดไฟล์ Excel (.csv) แจกแจงรายการยาทั้งหมด แยกตามตู้ พร้อมยอดคงเหลือล่าสุดเพื่อนำไปเช็คสต็อก</p>
+                   <button onClick={handleExportExcel} className="w-full bg-green-600 hover:bg-green-700 text-white p-3 rounded-xl font-bold shadow-md flex justify-center items-center gap-2 transition-colors"><Download size={18}/> ดาวน์โหลด Excel (CSV)</button>
+                </div>
+
+                <div className="border-t border-slate-200 pt-5">
+                   <h3 className="text-sm font-bold text-slate-700 mb-3">พิมพ์รายงาน Stock Card (PDF)</h3>
+                   <div className="space-y-3">
+                      <div><label className="block text-xs font-medium mb-1.5 text-slate-600">เลือกตู้ยา (Cabinet)</label><select className="w-full bg-white border border-slate-200 rounded-xl p-3 outline-none" value={reportTargetCategory} onChange={(e) => { setReportTargetCategory(e.target.value === "all" ? "all" : Number(e.target.value)); setReportTargetId("all"); }}><option value="all">-- ทุกตู้ยา --</option>{categoriesList?.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}</select></div>
+                      <div><label className="block text-xs font-medium mb-1.5 text-slate-600">เลือกรายการยาที่ต้องการพิมพ์</label><select className="w-full bg-white border border-slate-200 rounded-xl p-3 outline-none" value={reportTargetId} onChange={(e) => setReportTargetId(e.target.value)}><option value="all">-- พิมพ์ทั้งหมด (ตามตู้) --</option>{medicines.filter(m => reportTargetCategory === "all" || String(m.cabinet_category) === String(reportTargetCategory)).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
+                      <button onClick={handleGenerateReport} disabled={isGeneratingReport} className="w-full bg-blue-500 hover:bg-blue-600 text-white p-3 rounded-xl font-bold shadow-md transition-colors flex justify-center items-center gap-2 mt-2">{isGeneratingReport ? "รอสักครู่..." : <><Printer size={18}/> สร้าง PDF</>}</button>
+                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: QR Code */}
+        {isQRModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
+            <div className="bg-white/80 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+              <div className="flex justify-between items-center p-5 border-b border-white/50"><h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><QrCode size={20}/> พิมพ์ QR Code</h2><button onClick={() => setIsQRModalOpen(false)}><X size={22} className="text-slate-400 hover:text-slate-600" /></button></div>
+              <div className="p-6 space-y-4">
+                <div>
+                   <label className="block text-sm font-medium mb-1.5 text-slate-600">เลือกตู้ยา (Cabinet)</label>
+                   <select className="w-full bg-white/60 border border-white/80 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 font-medium text-slate-700 shadow-sm" value={qrTargetCategory} onChange={(e) => { setQrTargetCategory(e.target.value === "all" ? "all" : Number(e.target.value)); setQrTargetId("all"); }}>
+                      <option value="all">-- ทุกตู้ยา --</option>
+                      {categoriesList?.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                   </select>
+                </div>
+                <div>
+                   <label className="block text-sm font-medium mb-1.5 text-slate-600">เลือกรายการยา</label>
+                   <select className="w-full bg-white/60 border border-white/80 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 font-medium text-slate-700 shadow-sm" value={qrTargetId} onChange={(e) => setQrTargetId(e.target.value)}>
+                      <option value="all">-- พิมพ์ทั้งหมด (ตามตู้ที่เลือก) --</option>
+                      {medicines.filter(m => qrTargetCategory === "all" || String(m.cabinet_category) === String(qrTargetCategory)).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                   </select>
+                </div>
+                <div className="pt-2 flex gap-3"><button onClick={() => setIsQRModalOpen(false)} className="flex-1 bg-white/60 border border-white hover:bg-white/90 p-3.5 rounded-xl font-medium text-slate-600 shadow-sm">ยกเลิก</button><button onClick={handleGenerateQRPrint} className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white p-3.5 rounded-xl font-medium shadow-md transition-colors">สร้าง QR Code</button></div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Stock In/Out */}
+        {isStockModalOpen && selectedMed && (
+          <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[70]">
+            <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-white flex flex-col max-h-[90vh]">
+              <div className={`flex justify-between items-center p-5 border-b border-white/50 ${stockAction === 'in' ? 'bg-emerald-50/60' : 'bg-red-50/60'}`}>
+                <h2 className={`text-lg font-bold flex items-center gap-2 ${stockAction === 'in' ? 'text-emerald-700' : 'text-red-700'}`}>{stockAction === 'in' ? <PackagePlus size={22} /> : <PackageMinus size={22} />}{stockAction === 'in' ? 'รับเข้าสต็อก' : 'ตัดจ่ายสต็อก'}</h2>
+                <button onClick={() => setIsStockModalOpen(false)}><X size={24} className="text-slate-400 hover:text-slate-600" /></button>
+              </div>
+              <form onSubmit={handleUpdateStock} className="p-6 space-y-4 overflow-y-auto">
+                <div className="font-extrabold text-slate-800 mb-2 border-b border-slate-100 pb-3">{selectedMed.name}</div>
+                
+                <div>
+                   <label className="block text-sm font-bold text-slate-700 mb-1.5">วันที่ทำรายการ *</label>
+                   <SmartDateInput 
+                      value={txDate} 
+                      onChange={setTxDate} 
+                      placeholder="วว/ดด/ปปปป หรือคลิกเพื่อพิมพ์"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 shadow-sm"
+                      required
+                   />
+                </div>
+
+                {stockAction === 'in' ? (
+                  <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100/50 space-y-3 shadow-inner">
+                    <div className="bg-white/80 p-3 rounded-xl border border-emerald-200/50 shadow-sm flex flex-col gap-2">
+                      <label className="flex items-center gap-2.5 cursor-pointer">
+                        <input type="checkbox" className="w-4 h-4 text-emerald-500 rounded border-slate-300 focus:ring-emerald-400" checked={isPendingStock} onChange={(e) => setIsPendingStock(e.target.checked)} />
+                        <span className="text-sm font-bold text-emerald-700">เป็นรายการรับเข้าล่วงหน้า</span>
+                      </label>
+                      {isPendingStock && (<div className="pl-6.5 mt-1"><label className="block text-xs font-medium text-emerald-600 mb-1">คาดว่าจะเข้าวันที่ *</label><SmartDateInput value={expectedDate} onChange={setExpectedDate} className="w-full border border-emerald-200/50 rounded-lg p-2.5 text-sm bg-white" required /></div>)}
+                    </div>
+                    <div className="flex gap-2 bg-white/60 p-1 rounded-xl border border-emerald-200/50">
+                      <button type="button" onClick={() => setStockInMode('existing')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${stockInMode === 'existing' ? 'bg-emerald-100/80 text-emerald-700 shadow-sm' : 'text-slate-500 hover:bg-white'}`}>เลือกล็อตเดิม</button>
+                      <button type="button" onClick={() => setStockInMode('new')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${stockInMode === 'new' ? 'bg-emerald-100/80 text-emerald-700 shadow-sm' : 'text-slate-500 hover:bg-white'}`}>+ เพิ่มล็อตใหม่</button>
+                    </div>
+                    {stockInMode === 'existing' ? (
+                      <div><label className="block text-sm font-bold text-emerald-700 mb-1.5">เลือกล็อต (EXP) *</label><select required className="w-full bg-white border border-emerald-200/50 rounded-xl p-3 font-medium outline-none" value={selectedLotId} onChange={(e) => { setSelectedLotId(e.target.value); const l = (selectedMed.medicine_lots || []).find((x: any) => String(x.id) === e.target.value); if(l) { setStockPackSize(l.pack_size.toString()); setStockUnitName(l.unit_name); }}}><option value="">-- กรุณาเลือกล็อต --</option>{(selectedMed.medicine_lots || []).map((lot: any) => { const packs = Math.floor(lot.current_stock / lot.pack_size); const remainder = lot.current_stock % lot.pack_size; const unitString = lot.unit_name === "'s" ? "'" : ` ${lot.unit_name}`; const remainderText = remainder > 0 ? ` เศษ ${remainder}` : ""; return <option key={lot.id} value={lot.id}>EXP: {lot.exp_date} (เหลือ: {packs}x{lot.pack_size}{unitString}{remainderText})</option> })}</select></div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-sm font-bold text-emerald-700 mb-1.5">วันหมดอายุ (EXP) *</label>
+                          <SmartDateInput value={stockExpDate} onChange={setStockExpDate} placeholder="วว/ดด/ปปปป หรือ 150926" className="w-full bg-white border border-emerald-200/50 rounded-xl p-3 outline-none" required />
+                        </div>
+                        <div><label className="block text-sm font-bold text-emerald-700 mb-1.5">ขนาดบรรจุต่อกล่อง *</label><input type="number" required min="1" className="w-full bg-white border border-emerald-200/50 rounded-xl p-3 outline-none" value={stockPackSize} onChange={(e) => setStockPackSize(e.target.value)} /></div>
+                        <div>
+                          <label className="block text-sm font-bold text-emerald-700 mb-1.5">หน่วยนับ *</label>
+                          <div className="grid grid-cols-3 gap-2">{["'s", "vial", "amp", "bottle", "box", "ชิ้น", "อัน", "กระปุก", "ตลับ"].map((u) => (<button key={u} type="button" onClick={() => setStockUnitName(u)} className={`py-2 px-2 text-xs font-bold rounded-xl border transition-all ${stockUnitName === u ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-white text-slate-700 hover:bg-emerald-50'}`}>{u === "'s" ? "'s (เม็ด)" : u}</button>))}</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="bg-red-50/50 p-4 rounded-2xl border border-red-100/50 shadow-inner">
+                    <label className="block text-sm font-bold text-red-700 mb-2">เลือกล็อต EXP ที่ต้องการหักสต็อก *</label>
+                    <select required className="w-full bg-white border border-red-200/50 rounded-xl p-3.5 font-medium outline-none" value={selectedLotId} onChange={(e) => setSelectedLotId(e.target.value)}><option value="">-- กรุณาเลือกล็อต --</option>{(selectedMed.medicine_lots || []).filter((l: any) => l.current_stock > 0).map((lot: any) => { const packs = Math.floor(lot.current_stock / lot.pack_size); const remainder = lot.current_stock % lot.pack_size; const unitString = lot.unit_name === "'s" ? "'" : ` ${lot.unit_name}`; const remainderText = remainder > 0 ? ` เศษ ${remainder}` : ""; return <option key={lot.id} value={lot.id}>EXP: {lot.exp_date} (เหลือ: {packs}x{lot.pack_size}{unitString}{remainderText})</option> })}</select>
+                  </div>
+                )}
+                
+                {/* ช่องกรอกจำนวน + หมายเหตุ */}
+                <div className="mt-5 space-y-3">
+                  <div>
+                    <div className="flex bg-slate-100/80 p-1.5 rounded-xl mb-3 shadow-inner"><button type="button" className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${inputMode === 'base' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`} onClick={() => setInputMode('base')}>กรอกเป็นเม็ด/ชิ้น</button><button type="button" className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${inputMode === 'pack' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`} onClick={() => setInputMode('pack')}>กรอกเป็นกล่อง/แพ็ค</button></div>
+                    {inputMode === 'base' ? (<div><label className="block text-sm font-medium mb-1.5 text-slate-600">ระบุจำนวน (ชิ้นย่อย)</label><input type="number" required min="1" className="w-full bg-white border border-slate-200 rounded-xl p-3.5 text-lg font-extrabold text-center outline-none" value={inputAmount} onChange={(e) => setInputAmount(e.target.value)} /></div>) : (<div><label className="block text-sm font-medium mb-1.5 text-slate-600">ระบุจำนวน (กล่อง/แพ็ค)</label><input type="number" step="0.1" required min="0.1" className="w-full bg-white border border-slate-200 rounded-xl p-3.5 text-lg font-extrabold text-center outline-none" value={inputPackCount} onChange={(e) => setInputPackCount(e.target.value)} /></div>)}
+                  </div>
+                  <div>
+                     <label className="block text-sm font-medium mb-1.5 text-slate-600">หมายเหตุเพิ่มเติม (ถ้ามี)</label>
+                     <input type="text" className="w-full bg-white border border-slate-200 rounded-xl p-3 outline-none text-sm" placeholder="เช่น ยืมวอร์ด, แลกเปลี่ยนยา" value={stockNote} onChange={(e) => setStockNote(e.target.value)} />
+                  </div>
+                </div>
+                <div className="pt-4 flex gap-3"><button type="button" onClick={() => setIsStockModalOpen(false)} className="flex-1 bg-white border border-slate-200 p-3.5 rounded-xl font-bold text-slate-600">ยกเลิก</button><button type="submit" disabled={isSubmitting} className={`flex-1 text-white p-3.5 rounded-xl font-bold text-lg shadow-md transition-colors disabled:opacity-60 ${stockAction === 'in' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-red-500 hover:bg-red-600'}`}>{isSubmitting ? 'กำลังบันทึก...' : 'ยืนยัน'}</button></div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: History */}
+        {isHistoryModalOpen && historyMed && (
+          <div className="fixed inset-0 bg-slate-50 flex flex-col z-50 overflow-y-auto w-full h-full">
+            <div className="bg-white/80 backdrop-blur-md border-b border-slate-200 flex justify-between items-center p-4 sticky top-0 z-10 shadow-sm">
+              <button onClick={() => { setIsHistoryModalOpen(false); setHistoryMed(null); setHistoryRows([]); }} className="flex items-center text-sm font-bold text-slate-600 hover:text-blue-600"><ArrowLeft size={18} className="mr-1.5"/> กลับหน้ารวม</button>
+            </div>
+            <div className="p-4 md:p-6 max-w-3xl mx-auto w-full space-y-5 pb-20">
+              <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-slate-100">
+                <div className="text-center mb-6"><h1 className="text-2xl font-extrabold">{historyMed.name}</h1></div>
+                <div className="space-y-3.5">
+                  <h3 className="font-bold flex items-center gap-2"><History size={20} /> ประวัติการทำรายการ</h3>
+                  {historyRows.map((row: any) => {
+                     return (
+                        <div key={row.id} className="flex flex-col gap-2 bg-white border border-slate-100 rounded-2xl p-4 md:p-5 shadow-sm">
+                          <div className={`text-sm font-extrabold ${row.action === 'in' ? 'text-emerald-700' : 'text-red-700'}`}>{row.action === 'in' ? 'รับเข้า' : 'ตัดจ่าย'} {row.amount}</div>
+                          <div className="text-[10px] md:text-xs text-slate-500 flex items-center gap-1 font-medium"><CalendarDays size={12} /> EXP: {row.exp_date || "-"}</div>
+                          <div className="text-[10px] text-slate-400 font-medium">ทำรายการเมื่อ: {formatHistoryDate(row.created_at)}</div>
+                          <div className="text-[10px] font-bold">โดย {row.staff_name}</div>
+                        </div>
+                     )
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Modal: Visitor Note Main Page (หน้าสแกน QR) */}
         {isVisitorMainModalOpen && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[80]">
              <div className="bg-white/95 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto">
@@ -1198,333 +1397,8 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
              </div>
           </div>
         )}
-
-        {loading ? (<div className="p-10 text-center text-slate-400 bg-white/60 backdrop-blur-xl rounded-3xl shadow-sm border border-white">กำลังโหลดข้อมูล...</div>) : filteredMedicines.length === 0 ? (<div className="p-10 text-center text-slate-400 bg-white/60 backdrop-blur-xl rounded-3xl shadow-sm border border-white">ไม่พบรายการยาที่ตรงกับเงื่อนไข</div>) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5">
-            {filteredMedicines.map((med) => {
-              const activeLots = (med.medicine_lots || []).filter((l: any) => l.current_stock > 0).sort((a: any, b: any) => new Date(a.exp_date).getTime() - new Date(b.exp_date).getTime());
-              const medStats = calculateMedStats(med);
-              const latestPackSize = activeLots.length > 0 ? activeLots[0].pack_size : (med.medicine_lots?.[0]?.pack_size || 100);
-              const latestUnitName = activeLots.length > 0 ? activeLots[0].unit_name : (med.medicine_lots?.[0]?.unit_name || 'หน่วย');
-              const isAvail = med.is_available !== false;
-
-              return (
-                <div key={med.id} className={`bg-white/70 backdrop-blur-xl rounded-3xl shadow-sm border p-5 relative flex flex-col gap-3.5 transition-all ${!isAvail ? 'border-red-300/80 bg-red-50/70' : 'border-white/80 hover:shadow-md'}`}>
-                  <div className="flex justify-between items-start border-b border-white/50 pb-3">
-                    <div className="w-full">
-                      <div onClick={() => openHistoryModal(med)} className="font-extrabold text-slate-800 text-lg cursor-pointer hover:text-blue-500 tracking-tight leading-tight">{med.name}</div>
-                      <div className="text-xs text-slate-500 mt-1.5 font-medium">รหัส HosXP: <span className="font-bold">{med.hosxp_icode || "-"}</span></div>
-                      {med.note && <div className="text-[10px] text-amber-700 bg-amber-50/80 px-2.5 py-1 rounded-lg border border-amber-100/50 mt-1.5 inline-block font-medium">หมายเหตุ: {med.note}</div>}
-                      <div className="mt-1.5"><span className="text-[10px] font-semibold bg-white/60 text-slate-600 px-3 py-1 rounded-full border border-white shadow-sm w-fit inline-block">ตู้ยา: {getCategoryName(med.cabinet_category)}</span></div>
-                    </div>
-                    <div className="flex flex-col gap-2 shrink-0 w-[72px]">
-                      <div className="flex gap-1.5 w-full"><button onClick={() => openEditMedModal(med)} className="flex-1 p-2 bg-white/60 border border-white text-slate-500 rounded-xl hover:bg-blue-50 hover:text-blue-600 flex justify-center shadow-sm"><Edit size={14} /></button><button onClick={() => handleDeleteMed(med.id)} className="flex-1 p-2 bg-white/60 border border-white text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-500 flex justify-center shadow-sm"><Trash2 size={14} /></button></div>
-                      <button onClick={() => toggleAvailability(med)} className={`w-full py-1.5 text-[10px] font-bold border rounded-xl flex justify-center items-center gap-1 shadow-sm transition-colors ${isAvail ? 'bg-emerald-50/80 text-emerald-700 border-emerald-200/50 hover:bg-emerald-100' : 'bg-red-100 text-red-700 border-red-300 hover:bg-red-200'}`}>
-                        <div className={`w-1.5 h-1.5 rounded-full ${isAvail ? 'bg-emerald-400' : 'bg-red-500'}`}></div>{isAvail ? "เบิกได้" : "คลังเป็น 0"}
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                     <div className="text-[11px] font-bold text-slate-500 mb-2">คงเหลือ (แยกตาม EXP):</div>
-                     {activeLots.length === 0 ? <span className="text-red-500 text-xs font-bold px-4 py-1.5 bg-red-50/80 rounded-xl border border-red-200 backdrop-blur-sm shadow-sm inline-block">สต็อกหมด</span> : (
-                       <div className="flex flex-col gap-2">
-                          {activeLots.map((lot: any) => {
-                            const fullPacks = Math.floor(lot.current_stock / lot.pack_size); const remainder = lot.current_stock % lot.pack_size;
-                            return (
-                              <div key={lot.id} className="flex justify-between items-center bg-white/50 border border-white p-2.5 rounded-2xl shadow-sm">
-                                <span className="text-[10px] font-bold text-rose-500 flex items-center gap-1"><CalendarDays size={12} /> EXP: {lot.exp_date}</span>
-                                <div className="flex items-baseline gap-1 text-sm"><span className="font-extrabold text-emerald-600">{fullPacks}</span><span className="text-slate-400 text-[9px] font-medium">x</span><span className="text-slate-700 font-bold">{lot.pack_size}</span>{remainder > 0 && <span className="text-amber-500 font-bold ml-1 text-[9px]">เศษ {remainder}</span>}<span className="text-slate-500 text-[9px] ml-1 font-medium">{lot.unit_name}</span></div>
-                              </div>
-                            )
-                          })}
-                       </div>
-                     )}
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 mt-auto pt-2">
-                      <button onClick={() => openStockModal(med, 'in')} className="flex items-center justify-center gap-1.5 p-2.5 bg-emerald-50/80 text-emerald-700 rounded-xl border border-emerald-100/50 font-bold text-xs shadow-sm hover:bg-emerald-100 transition-colors"><PackagePlus size={16} /> รับเข้า</button>
-                      <button onClick={() => openStockModal(med, 'out')} className="flex items-center justify-center gap-1.5 p-2.5 bg-red-50/80 text-red-700 rounded-xl border border-red-100/50 font-bold text-xs shadow-sm hover:bg-red-100 transition-colors"><PackageMinus size={16} /> ตัดจ่าย</button>
-                  </div>
-                  <div className="bg-blue-50/40 backdrop-blur-sm p-3 rounded-2xl border border-blue-100/30 mt-1 space-y-1.5">
-                    <div className="flex justify-between text-[11px]"><span className="text-slate-500 font-medium">ใช้รวม ({medStats.daysDiff} วัน):</span><span className="font-bold text-slate-800">{formatBoxString(medStats.totalUsage, latestPackSize, latestUnitName)}</span></div>
-                    <div className="flex justify-between text-[11px]"><span className="text-amber-600 font-medium">เบิก 1 สัปดาห์:</span><span className="font-extrabold text-amber-600">{formatBoxString(medStats.target1Week, latestPackSize, latestUnitName)}</span></div>
-                    <div className="flex justify-between text-[11px]"><span className="text-emerald-600 font-medium">เบิก 2 สัปดาห์:</span><span className="font-extrabold text-emerald-600">{formatBoxString(medStats.target2Weeks, latestPackSize, latestUnitName)}</span></div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        {/* Modal: Change Password */}
-        {isChangePwdModalOpen && (
-          <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[80]">
-            <div className="bg-white/90 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden p-6 text-center relative">
-               <button onClick={() => setIsChangePwdModalOpen(false)} className="absolute top-4 right-4 p-1 hover:bg-white/60 rounded-xl"><X size={20} className="text-slate-400"/></button>
-               <div className="w-16 h-16 bg-blue-100/80 text-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm border border-blue-200/50"><KeyRound size={32}/></div>
-               <h2 className="text-lg font-bold text-slate-800 mb-4">เปลี่ยนรหัสผ่าน</h2>
-               <form onSubmit={handleChangePassword} className="space-y-4 text-left">
-                  <div><label className="block text-sm font-medium mb-1.5 text-slate-600">รหัสผ่านเดิม</label><input type="password" required className="w-full bg-white/50 border border-white rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 shadow-sm" value={oldPwd} onChange={(e) => setOldPwd(e.target.value)} /></div>
-                  <div><label className="block text-sm font-medium mb-1.5 text-slate-600">รหัสผ่านใหม่</label><input type="password" required className="w-full bg-white/50 border border-white rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 shadow-sm" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} /></div>
-                  <div><label className="block text-sm font-medium mb-1.5 text-slate-600">ยืนยันรหัสผ่านใหม่</label><input type="password" required className="w-full bg-white/50 border border-white rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 shadow-sm" value={newPwd2} onChange={(e) => setNewPwd2(e.target.value)} /></div>
-                  {pwdError && <p className="text-red-500 text-sm">{pwdError}</p>}
-                  <button type="submit" disabled={isSubmitting} className="w-full bg-blue-500 hover:bg-blue-600 text-white p-3.5 rounded-xl font-medium shadow-md transition-colors disabled:opacity-60">{isSubmitting ? "กำลังบันทึก..." : "ยืนยันการเปลี่ยนรหัสผ่าน"}</button>
-               </form>
-            </div>
-          </div>
-        )}
-
-        {/* Modal: Add/Edit Med */}
-        {isMedModalOpen && (
-          <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
-            <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-white">
-              <div className="flex justify-between items-center p-5 md:p-6 border-b border-white/50 bg-white/40"><h2 className="text-lg md:text-xl font-bold text-slate-800">{isEditing ? 'แก้ไขข้อมูลยา' : 'เพิ่มรายการยาใหม่'}</h2><button onClick={() => setIsMedModalOpen(false)} className="p-1 hover:bg-white/60 rounded-xl transition-colors"><X size={22} className="text-slate-500" /></button></div>
-              <form onSubmit={handleSaveMedicine} className="p-5 md:p-6 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div><label className="block text-sm font-medium mb-1.5 text-slate-600">ชื่อยา *</label><input type="text" required className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400" value={medFormData.name} onChange={(e) => setMedFormData({ ...medFormData, name: e.target.value })} /></div>
-                  <div><label className="block text-sm font-medium mb-1.5 text-slate-600">รหัส HosXP</label><input type="text" className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400" value={medFormData.hosxp_icode} onChange={(e) => setMedFormData({ ...medFormData, hosxp_icode: e.target.value })} /></div>
-                </div>
-                <div><label className="block text-sm font-medium mb-1.5 text-slate-600">หมวดหมู่ตู้ยา</label><select className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 font-medium text-slate-700" value={medFormData.cabinet_category} onChange={(e) => setMedFormData({ ...medFormData, cabinet_category: e.target.value })}>{categoriesList?.map(cat => <option key={cat.id} value={cat.id.toString()}>{cat.name}</option>)}</select></div>
-                <div><label className="block text-sm font-medium mb-1.5 text-slate-600">หมายเหตุ</label><textarea className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400" rows={2} value={medFormData.note} onChange={(e) => setMedFormData({ ...medFormData, note: e.target.value })} /></div>
-                <div className="pt-4 flex gap-3"><button type="button" onClick={() => setIsMedModalOpen(false)} className="flex-1 bg-white/60 border border-white hover:bg-white/90 p-3.5 rounded-xl font-medium text-slate-600 shadow-sm">ยกเลิก</button><button type="submit" className="flex-1 bg-blue-500 hover:bg-blue-600 text-white p-3.5 rounded-xl font-medium shadow-md shadow-blue-200 transition-colors">{isEditing ? 'บันทึกการแก้ไข' : 'บันทึกยาใหม่'}</button></div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Modal: QR, Report, Import */}
-        {isQRModalOpen && (
-          <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
-            <div className="bg-white/80 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
-              <div className="flex justify-between items-center p-5 border-b border-white/50"><h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><QrCode size={20}/> พิมพ์ QR Code</h2><button onClick={() => setIsQRModalOpen(false)}><X size={22} className="text-slate-400 hover:text-slate-600" /></button></div>
-              <div className="p-6 space-y-4">
-                <div>
-                   <label className="block text-sm font-medium mb-1.5 text-slate-600">เลือกตู้ยา (Cabinet)</label>
-                   <select className="w-full bg-white/60 border border-white/80 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 font-medium text-slate-700 shadow-sm" value={qrTargetCategory} onChange={(e) => { setQrTargetCategory(e.target.value === "all" ? "all" : Number(e.target.value)); setQrTargetId("all"); }}>
-                      <option value="all">-- ทุกตู้ยา --</option>
-                      {categoriesList?.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-                   </select>
-                </div>
-                <div>
-                   <label className="block text-sm font-medium mb-1.5 text-slate-600">เลือกรายการยา</label>
-                   <select className="w-full bg-white/60 border border-white/80 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 font-medium text-slate-700 shadow-sm" value={qrTargetId} onChange={(e) => setQrTargetId(e.target.value)}>
-                      <option value="all">-- พิมพ์ทั้งหมด (ตามตู้ที่เลือก) --</option>
-                      {medicines.filter(m => qrTargetCategory === "all" || String(m.cabinet_category) === String(qrTargetCategory)).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                   </select>
-                </div>
-                <div className="pt-2 flex gap-3"><button onClick={() => setIsQRModalOpen(false)} className="flex-1 bg-white/60 border border-white hover:bg-white/90 p-3.5 rounded-xl font-medium text-slate-600 shadow-sm">ยกเลิก</button><button onClick={handleGenerateQRPrint} className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white p-3.5 rounded-xl font-medium shadow-md transition-colors">สร้าง QR Code</button></div>
-              </div>
-            </div>
-          </div>
-        )}
-        {isReportModalOpen && (
-          <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
-            <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden border border-white">
-              <div className="flex justify-between items-center p-5 border-b border-white/50 bg-blue-50/50"><h2 className="text-lg font-bold flex items-center gap-2 text-blue-800"><FileText size={20} /> พิมพ์รายงาน Stock Card</h2><button onClick={() => setIsReportModalOpen(false)} className="p-1 hover:bg-white/60 rounded-xl transition-colors"><X size={20} className="text-blue-400" /></button></div>
-              <div className="p-6 space-y-5">
-                <div><label className="block text-sm font-medium mb-2 text-slate-600">เลือกตู้ยา (Cabinet)</label><select className="w-full bg-white/60 border border-white shadow-sm rounded-xl p-3.5 outline-none focus:ring-2 focus:ring-blue-400 font-medium text-slate-700" value={reportTargetCategory} onChange={(e) => { setReportTargetCategory(e.target.value === "all" ? "all" : Number(e.target.value)); setReportTargetId("all"); }}><option value="all">-- ทุกตู้ยา --</option>{categoriesList?.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}</select></div>
-                <div><label className="block text-sm font-medium mb-2 text-slate-600">เลือกรายการยาที่ต้องการพิมพ์</label><select className="w-full bg-white/60 border border-white shadow-sm rounded-xl p-3.5 outline-none focus:ring-2 focus:ring-blue-400 font-medium text-slate-700" value={reportTargetId} onChange={(e) => setReportTargetId(e.target.value)}><option value="all">-- พิมพ์ทั้งหมด (ตามตู้ที่เลือก) --</option>{medicines.filter(m => reportTargetCategory === "all" || String(m.cabinet_category) === String(reportTargetCategory)).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
-                <div className="pt-2 flex gap-3"><button onClick={() => setIsReportModalOpen(false)} className="flex-1 bg-white/60 border border-white p-3.5 rounded-xl font-medium text-slate-600 shadow-sm">ยกเลิก</button><button onClick={handleGenerateReport} disabled={isGeneratingReport} className="flex-1 bg-blue-500 hover:bg-blue-600 text-white p-3.5 rounded-xl font-medium shadow-md shadow-blue-200 transition-colors disabled:opacity-60 flex justify-center items-center gap-2">{isGeneratingReport ? "รอสักครู่..." : <><Printer size={18}/> สร้าง PDF</>}</button></div>
-              </div>
-            </div>
-          </div>
-        )}
-        {isImportModalOpen && (
-          <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
-            <div className="bg-white/90 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden p-6">
-               <div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Upload size={20}/> นำเข้าข้อมูลยา</h2><button onClick={() => setIsImportModalOpen(false)}><X size={20} className="text-slate-400" /></button></div>
-               <p className="text-xs text-slate-500 mb-3">รูปแบบข้อมูลแต่ละบรรทัด (คั่นด้วยจุลภาค comma): <br/><code className="bg-slate-100 p-1 rounded text-slate-700">ชื่อยา, รหัสHosXP, หมายเหตุ, รหัสตู้ยา(ตัวเลข), สต็อกขั้นต่ำ</code></p>
-               <textarea rows={6} className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-blue-400 mb-4 shadow-sm font-mono" placeholder="พาราสเซทตามอล, P01, ยาแก้ปวด, 1, 10&#10;อม็อกซี่ซิลลิน, A02, ยาปฏิชีวนะ, 1, 5" value={importText} onChange={(e) => setImportText(e.target.value)} />
-               <div className="flex gap-3">
-                  <button onClick={() => setIsImportModalOpen(false)} className="flex-1 bg-slate-100 text-slate-700 p-3.5 rounded-xl font-medium shadow-sm">ยกเลิก</button>
-                  <button onClick={handleImportExcel} disabled={importing} className="flex-1 bg-amber-500 hover:bg-amber-600 text-white p-3.5 rounded-xl font-medium shadow-md transition-colors disabled:opacity-60">{importing ? "กำลังนำเข้า..." : "ยืนยันการนำเข้า"}</button>
-               </div>
-            </div>
-          </div>
-        )}
-
-        {/* Modal: Stock In/Out */}
-        {isStockModalOpen && selectedMed && (
-          <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[70]">
-            <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-white flex flex-col max-h-[90vh]">
-              <div className={`flex justify-between items-center p-5 border-b border-white/50 ${stockAction === 'in' ? 'bg-emerald-50/60' : 'bg-red-50/60'}`}>
-                <h2 className={`text-lg font-bold flex items-center gap-2 ${stockAction === 'in' ? 'text-emerald-700' : 'text-red-700'}`}>{stockAction === 'in' ? <PackagePlus size={22} /> : <PackageMinus size={22} />}{stockAction === 'in' ? 'รับเข้าสต็อก' : 'ตัดจ่ายสต็อก'}</h2>
-                <button onClick={() => setIsStockModalOpen(false)}><X size={24} className="text-slate-400 hover:text-slate-600" /></button>
-              </div>
-              <form onSubmit={handleUpdateStock} className="p-6 space-y-4 overflow-y-auto">
-                <div className="font-extrabold text-slate-800 mb-2 border-b border-slate-100 pb-3">{selectedMed.name}</div>
-                {stockAction === 'in' ? (
-                  <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100/50 space-y-3 shadow-inner">
-                    <div className="bg-white/80 p-3 rounded-xl border border-emerald-200/50 shadow-sm flex flex-col gap-2">
-                      <label className="flex items-center gap-2.5 cursor-pointer">
-                        <input type="checkbox" className="w-4 h-4 text-emerald-500 rounded border-slate-300 focus:ring-emerald-400" checked={isPendingStock} onChange={(e) => setIsPendingStock(e.target.checked)} />
-                        <span className="text-sm font-bold text-emerald-700">เป็นรายการรับเข้าล่วงหน้า (ยังไม่บวกสต็อก)</span>
-                      </label>
-                      {isPendingStock && (<div className="pl-6.5 mt-1"><label className="block text-xs font-medium text-emerald-600 mb-1">คาดว่าจะเข้าวันที่ *</label><input type="date" required className="w-full border border-emerald-200/50 rounded-lg p-2.5 text-sm bg-white" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} /></div>)}
-                    </div>
-                    <div className="flex gap-2 bg-white/60 p-1 rounded-xl border border-emerald-200/50">
-                      <button type="button" onClick={() => setStockInMode('existing')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${stockInMode === 'existing' ? 'bg-emerald-100/80 text-emerald-700 shadow-sm' : 'text-slate-500 hover:bg-white'}`}>เลือกล็อตเดิม</button>
-                      <button type="button" onClick={() => setStockInMode('new')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${stockInMode === 'new' ? 'bg-emerald-100/80 text-emerald-700 shadow-sm' : 'text-slate-500 hover:bg-white'}`}>+ เพิ่มล็อตใหม่</button>
-                    </div>
-                    {stockInMode === 'existing' ? (
-                      <div><label className="block text-sm font-bold text-emerald-700 mb-1.5">เลือกล็อต (EXP) *</label><select required className="w-full bg-white border border-emerald-200/50 rounded-xl p-3 font-medium outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm" value={selectedLotId} onChange={(e) => { setSelectedLotId(e.target.value); const l = (selectedMed.medicine_lots || []).find((x: any) => String(x.id) === e.target.value); if(l) { setStockPackSize(l.pack_size.toString()); setStockUnitName(l.unit_name); }}}><option value="">-- กรุณาเลือกล็อต --</option>{(selectedMed.medicine_lots || []).map((lot: any) => { const packs = Math.floor(lot.current_stock / lot.pack_size); const remainder = lot.current_stock % lot.pack_size; const unitString = lot.unit_name === "'s" ? "'" : ` ${lot.unit_name}`; const remainderText = remainder > 0 ? ` เศษ ${remainder}` : ""; return <option key={lot.id} value={lot.id}>EXP: {lot.exp_date} (เหลือ: {packs}x{lot.pack_size}{unitString}{remainderText})</option> })}</select></div>
-                    ) : (
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-sm font-bold text-emerald-700 mb-1.5">วันหมดอายุ (EXP) *</label>
-                          <input type="date" required className="w-full bg-white border border-emerald-200/50 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm" value={stockExpDate} onChange={(e) => setStockExpDate(e.target.value)} />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-bold text-emerald-700 mb-1.5">ขนาดบรรจุต่อกล่อง *</label>
-                          <input type="number" required min="1" className="w-full bg-white border border-emerald-200/50 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm" value={stockPackSize} onChange={(e) => setStockPackSize(e.target.value)} />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-bold text-emerald-700 mb-1.5">หน่วยนับ *</label>
-                          <div className="grid grid-cols-3 gap-2">
-                            {["'s", "vial", "amp", "bottle", "box", "ชิ้น", "อัน", "กระปุก", "ตลับ"].map((u) => (
-                              <button
-                                key={u}
-                                type="button"
-                                onClick={() => setStockUnitName(u)}
-                                className={`py-2 px-2 text-xs font-bold rounded-xl border transition-all ${stockUnitName === u ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-white text-slate-700 border-emerald-200/60 hover:bg-emerald-50'}`}
-                              >
-                                {u === "'s" ? "'s (เม็ด)" : u}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="bg-red-50/50 p-4 rounded-2xl border border-red-100/50 shadow-inner">
-                    <label className="block text-sm font-bold text-red-700 mb-2">เลือกล็อต EXP ที่ต้องการหักสต็อก *</label>
-                    <select required className="w-full bg-white border border-red-200/50 rounded-xl p-3.5 font-medium outline-none focus:ring-2 focus:ring-red-400 shadow-sm" value={selectedLotId} onChange={(e) => setSelectedLotId(e.target.value)}>
-                      <option value="">-- กรุณาเลือกล็อต --</option>
-                      {(selectedMed.medicine_lots || []).filter((l: any) => l.current_stock > 0).map((lot: any) => { const packs = Math.floor(lot.current_stock / lot.pack_size); const remainder = lot.current_stock % lot.pack_size; const unitString = lot.unit_name === "'s" ? "'" : ` ${lot.unit_name}`; const remainderText = remainder > 0 ? ` เศษ ${remainder}` : ""; return <option key={lot.id} value={lot.id}>EXP: {lot.exp_date} (เหลือ: {packs}x{lot.pack_size}{unitString}{remainderText})</option> })}
-                    </select>
-                  </div>
-                )}
-                <div className="mt-5 space-y-3">
-                  <div>
-                    <div className="flex bg-slate-100/80 p-1.5 rounded-xl mb-3 shadow-inner">
-                      <button type="button" className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${inputMode === 'base' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`} onClick={() => setInputMode('base')}>กรอกเป็นเม็ด/ชิ้น</button>
-                      <button type="button" className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${inputMode === 'pack' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`} onClick={() => setInputMode('pack')}>กรอกเป็นกล่อง/แพ็ค</button>
-                    </div>
-                    {inputMode === 'base' ? (
-                      <div><label className="block text-sm font-medium mb-1.5 text-slate-600">ระบุจำนวน (ชิ้นย่อย)</label><input type="number" required min="1" className="w-full bg-white border border-slate-200 rounded-xl p-3.5 text-lg font-extrabold text-center outline-none focus:ring-2 focus:ring-blue-400 shadow-sm" value={inputAmount} onChange={(e) => setInputAmount(e.target.value)} /></div>
-                    ) : (
-                      <div><label className="block text-sm font-medium mb-1.5 text-slate-600">ระบุจำนวน (กล่อง/แพ็ค)</label><input type="number" step="0.1" required min="0.1" className="w-full bg-white border border-slate-200 rounded-xl p-3.5 text-lg font-extrabold text-center outline-none focus:ring-2 focus:ring-blue-400 shadow-sm" value={inputPackCount} onChange={(e) => setInputPackCount(e.target.value)} /></div>
-                    )}
-                  </div>
-                  <div>
-                     <label className="block text-sm font-medium mb-1.5 text-slate-600">หมายเหตุเพิ่มเติม (ถ้ามี)</label>
-                     <input type="text" className="w-full bg-white border border-slate-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 shadow-sm text-sm" placeholder="เช่น ยืมวอร์ด, แลกเปลี่ยนยา" value={stockNote} onChange={(e) => setStockNote(e.target.value)} />
-                  </div>
-                </div>
-                <div className="pt-4 flex gap-3"><button type="button" onClick={() => setIsStockModalOpen(false)} className="flex-1 bg-white border border-slate-200 p-3.5 rounded-xl font-bold text-slate-600 shadow-sm">ยกเลิก</button><button type="submit" disabled={isSubmitting} className={`flex-1 text-white p-3.5 rounded-xl font-bold text-lg shadow-md transition-colors disabled:opacity-60 ${stockAction === 'in' ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-200' : 'bg-red-500 hover:bg-red-600 shadow-red-200'}`}>{isSubmitting ? 'กำลังบันทึก...' : 'ยืนยัน'}</button></div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Modal: History */}
-        {isHistoryModalOpen && historyMed && (
-          <div className="fixed inset-0 bg-slate-50 flex flex-col z-50 overflow-y-auto w-full h-full">
-            <div className="bg-white/80 backdrop-blur-md border-b border-slate-200 flex justify-between items-center p-4 sticky top-0 z-10 shadow-sm">
-              <button onClick={() => { setIsHistoryModalOpen(false); setHistoryMed(null); setHistoryRows([]); }} className="flex items-center text-sm font-bold text-slate-600 hover:text-blue-600 transition-colors"><ArrowLeft size={18} className="mr-1.5"/> กลับหน้ารวม</button>
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full"><User size={14} /> {session.name}</div>
-            </div>
-            <div className="p-4 md:p-6 max-w-3xl mx-auto w-full space-y-5 pb-20">
-              <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-slate-100">
-                <div className="text-center mb-6">
-                  <h1 className="text-2xl md:text-3xl font-extrabold text-slate-800 tracking-tight">{historyMed.name}</h1>
-                  <div className="flex justify-center gap-2.5 mt-3 flex-wrap">
-                    <span className="px-3 py-1 bg-slate-100 rounded-full text-xs font-bold text-slate-600">รหัส: {historyMed.hosxp_icode || "-"}</span>
-                    <span className="px-3 py-1 bg-blue-50 border border-blue-100 rounded-full text-xs font-bold text-blue-600">ตู้ยา: {getCategoryName(historyMed.cabinet_category)}</span>
-                  </div>
-                </div>
-                <div className="mb-6 bg-slate-50 rounded-2xl p-5 border border-slate-100">
-                  <h3 className="text-sm font-bold flex items-center gap-2 mb-4 text-slate-600"><CalendarDays size={18} /> สต็อกคงเหลือแบ่งตาม EXP</h3>
-                  <div className="flex flex-wrap gap-3">
-                    {(!historyMed.medicine_lots || historyMed.medicine_lots.filter((l: any) => l.current_stock > 0).length === 0) ? <div className="text-sm text-red-500 font-bold bg-red-50 px-4 py-2 rounded-xl border border-red-100">สต็อกหมด</div> : (
-                      historyMed.medicine_lots.filter((l: any) => l.current_stock > 0).sort((a: any, b: any) => new Date(a.exp_date).getTime() - new Date(b.exp_date).getTime()).map((lot: any) => {
-                          const packs = Math.floor(lot.current_stock / lot.pack_size); const remainder = lot.current_stock % lot.pack_size;
-                          return (
-                            <div key={lot.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm min-w-[160px]">
-                              <div className="text-xs font-bold text-rose-500 mb-2 border-b border-slate-50 pb-2">EXP: {lot.exp_date}</div>
-                              <div className="flex items-baseline gap-1.5 text-lg"><span className="font-extrabold text-emerald-600">{packs}</span><span className="text-slate-400 text-sm font-medium">x</span><span className="text-slate-700 text-base font-bold">{lot.pack_size}</span>{remainder > 0 && <span className="text-amber-500 font-bold ml-1 text-xs">เศษ {remainder}</span>}<span className="text-slate-500 text-xs ml-0.5 font-medium">{lot.unit_name}</span></div>
-                              <div className="text-[10px] text-slate-400 mt-1.5 font-medium">รวม {lot.current_stock} หน่วย</div>
-                            </div>
-                          )
-                        })
-                    )}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3 md:gap-4">
-                  <button onClick={() => openStockModal(historyMed, 'in')} className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-100/80 text-emerald-700 p-5 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm"><PackagePlus size={28} /><span className="font-bold text-sm md:text-base">รับเข้าสต็อก</span></button>
-                  <button onClick={() => openStockModal(historyMed, 'out')} className="bg-red-50 hover:bg-red-100 border border-red-100/80 text-red-700 p-5 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm"><PackageMinus size={28} /><span className="font-bold text-sm md:text-base">ตัดจ่ายสต็อก</span></button>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-slate-100">
-                <h3 className="text-sm font-bold flex items-center gap-2 mb-5 text-slate-700 border-b pb-4 border-slate-100"><History size={20} /> ประวัติการทำรายการล่าสุด</h3>
-                <div className="space-y-3.5">
-                  {historyLoading ? <div className="text-center text-slate-500 py-10 font-medium">กำลังโหลดข้อมูล...</div> : historyRows.filter(r => r.status === 'completed' || r.status === 'pending').length === 0 ? <div className="text-center text-slate-400 py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200 font-medium">ยังไม่มีประวัติการรับเข้า/ตัดจ่าย</div> : (
-                    historyRows.filter(r => r.status === 'completed' || r.status === 'pending').map((row: any) => {
-                      const isInc = row.action === 'in'; const isPending = row.status === 'pending';
-                      const lotInfo = (historyMed.medicine_lots || []).find((l: any) => l.id.toString() === row.lot_id?.toString());
-                      const pSize = lotInfo?.pack_size || 100; const pUnit = lotInfo?.unit_name || 'หน่วย';
-                      
-                      return (
-                        <div key={row.id} className="flex flex-col gap-2 bg-white border border-slate-100 rounded-2xl p-4 md:p-5 shadow-sm hover:shadow-md transition-shadow">
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-start gap-3 md:gap-4">
-                              <div className={`p-2.5 rounded-xl mt-0.5 shadow-sm ${isPending ? 'bg-amber-100 text-amber-600' : isInc ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
-                                {isPending ? <Clock size={22} /> : isInc ? <PackagePlus size={22} /> : <PackageMinus size={22} />}
-                              </div>
-                              <div>
-                                <div className={`text-sm md:text-base font-extrabold ${isPending ? 'text-amber-700' : isInc ? 'text-emerald-700' : 'text-red-700'}`}>
-                                  {isPending ? 'รอรับเข้า' : isInc ? 'รับเข้า' : 'ตัดจ่าย'} {formatBoxString(row.amount, pSize, pUnit)}
-                                </div>
-                                <div className="text-xs font-bold text-blue-500 mt-0.5">(รวมทั้งหมด {row.amount} {pUnit})</div>
-                                <div className="text-[10px] md:text-xs text-slate-500 flex items-center gap-1 mt-2 font-medium"><CalendarDays size={12} /> EXP: {row.exp_date || "-"}</div>
-                                <div className="text-[10px] text-slate-400 mt-1 font-medium">{formatHistoryDate(row.created_at)}</div>
-                                
-                                {isPending && <div className="mt-2.5 text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200 inline-block shadow-sm">คาดว่าจะเข้า: {row.expected_date ? new Date(row.expected_date).toLocaleDateString('th-TH') : '-'}</div>}
-                                {row.edit_note && <div className="mt-2.5 text-[10px] text-slate-500 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200 inline-block font-medium">หมายเหตุ: {row.edit_note}</div>}
-                              </div>
-                            </div>
-                            <div className="flex flex-col items-end gap-2 shrink-0">
-                               <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-sm"><User size={12} /> {row.staff_name}</div>
-                               {isPending && (
-                                 <PendingApproveButton tx={row} onApprove={(setDone) => handleApprovePending(row, setDone)} />
-                               )}
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
-  );
-}
-
-function PendingApproveButton({ tx, onApprove }: { tx: any, onApprove: (setDone: (val: boolean) => void) => void }) {
-  const [done, setDone] = useState(false);
-  return (
-    <button 
-      onClick={() => onApprove(setDone)} 
-      disabled={done} 
-      className={`text-[10px] md:text-xs font-bold px-3 py-2 rounded-lg shadow-sm transition-colors mt-1 ${done ? 'bg-slate-300 text-slate-700 cursor-not-allowed' : 'bg-emerald-500 text-white hover:bg-emerald-600'}`}
-    >
-      {done ? 'รับของเข้าสต็อกแล้ว' : 'รับของเข้าสต็อก'}
-    </button>
   );
 }
 
@@ -1538,8 +1412,7 @@ export default function StockCardPage() {
       const { data } = await supabase.from("staff_accounts").select("name").order("name");
       if (data && data.length > 0) {
         const names = data.map(d => d.name);
-        const combined = Array.from(new Set([...DEFAULT_STAFF_LIST, ...names]));
-        setStaffList(combined);
+        setStaffList(Array.from(new Set([...DEFAULT_STAFF_LIST, ...names])));
       }
     } catch (e) {}
   };
@@ -1553,12 +1426,9 @@ export default function StockCardPage() {
     setCheckedSession(true); 
   }, []);
 
-  const handleLogout = () => { 
-    localStorage.removeItem(SESSION_KEY); 
-    setSession(null); 
-  };
+  const handleLogout = () => { localStorage.removeItem(SESSION_KEY); setSession(null); };
 
-  if (!checkedSession) return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-400">กำลังโหลดข้อมูล...</div>;
+  if (!checkedSession) return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-400">กำลังโหลด...</div>;
   if (!session) return <LoginScreen staffList={staffList} onLogin={setSession} />;
   return <StockCardApp session={session} onLogout={handleLogout} staffList={staffList} refreshStaffList={fetchStaffNames} />;
 }
