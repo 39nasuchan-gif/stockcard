@@ -223,7 +223,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   
   const [isStockModalOpen, setIsStockModalOpen] = useState(false); 
   const [selectedMed, setSelectedMed] = useState<any>(null); 
-  const [stockAction, setStockAction] = useState<'in' | 'out'>('in'); 
+  const [stockAction, setStockAction] = useState<'in' | 'out'>('out'); 
   const [stockInMode, setStockInMode] = useState<'existing' | 'new'>('existing'); 
   const [txDate, setTxDate] = useState("");
   const [stockExpDate, setStockExpDate] = useState(""); 
@@ -300,7 +300,21 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     try { 
       const { data, error } = await supabase.from("medicines").select(`*, medicine_lots (*)`).order("id", { ascending: false }); 
       if (error) throw error; 
-      if (data) setMedicines(data); 
+      if (data) {
+        setMedicines(data);
+        // ตรวจสอบ QR Code scan หลังจากโหลดข้อมูลยาเสร็จสมบูรณ์
+        if (typeof window !== 'undefined') {
+           const params = new URLSearchParams(window.location.search);
+           const scanId = params.get('scan');
+           if (scanId) {
+              const matchedMed = data.find((m: any) => String(m.id) === String(scanId));
+              if (matchedMed) {
+                 openStockModal(matchedMed, 'out');
+              }
+              window.history.replaceState({}, document.title, window.location.pathname);
+           }
+        }
+      }
       const { data: txData } = await supabase.from("stock_transactions").select("*").in("action", ["out","in"]); 
       if (txData) setAllTransactions(txData); 
     } catch (error) { 
@@ -340,21 +354,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   };
 
   useEffect(() => { 
-    fetchMedicines().then(() => {
-       if (typeof window !== 'undefined') {
-          const params = new URLSearchParams(window.location.search);
-          const scanId = params.get('scan');
-          if (scanId) {
-             // ค้นหายาจาก id ที่สแกนมา แล้วเปิดหน้าต่างตัดจ่าย/รับเข้า (Visitor Note) ทันที
-             supabase.from("medicines").select(`*, medicine_lots (*)`).eq("id", scanId).maybeSingle().then(({ data: medFound }) => {
-                if (medFound) {
-                   openStockModal(medFound, 'out'); // เปิดหน้าตัดจ่าย/รับเข้าตามที่ต้องการ
-                }
-             });
-             window.history.replaceState({}, document.title, "/");
-          }
-       }
-    }); 
+    fetchMedicines(); 
     fetchCategories(); 
     fetchVisitorNotes(); 
     fetchStaffRows(); 
@@ -1277,7 +1277,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           </div>
         )}
 
-        {/* Modal: History (คลิกชื่อยาแล้วมีประวัติ + โน้ตผู้มาเยือนรวมอยู่ครบถ้วน) */}
+        {/* Modal: History */}
         {isHistoryModalOpen && historyMed && (
           <div className="fixed inset-0 bg-slate-50 flex flex-col z-50 overflow-y-auto w-full h-full">
             <div className="bg-white/85 backdrop-blur-md border-b border-slate-200 flex justify-between items-center p-4 sticky top-0 z-10 shadow-sm">
@@ -1294,7 +1294,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                    <p className="text-xs text-slate-500 mt-1">รหัส HosXP: <span className="font-bold">{historyMed.hosxp_icode || "-"}</span> | ตู้: <span className="font-bold">{getCategoryName(historyMed.cabinet_category)}</span></p>
                 </div>
 
-                {/* โน้ตผู้มาเยือนเฉพาะยานี้ (ถ้ามี) */}
+                {/* โน้ตผู้มาเยือนเฉพาะยานี้ */}
                 <div className="mb-6 bg-amber-50/70 border border-amber-200/60 rounded-2xl p-4 shadow-sm">
                    <h3 className="text-xs font-bold text-amber-800 mb-2 flex items-center gap-1.5"><MessageSquareText size={15}/> โน้ตผู้มาเยือนสำหรับยานี้</h3>
                    {visitorNotes.filter(n => n.medicine_id?.toString() === historyMed.id?.toString()).length === 0 ? (
