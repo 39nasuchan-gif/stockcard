@@ -41,9 +41,6 @@ const formatBoxString = (totalItems: number, packSize: number, unitName: string)
   return `${packs} กล่อง × ${packSize} ${unitStr} ${rem > 0 ? `(เศษ ${rem} ${unitStr})` : ''}`; 
 }
 
-// ----------------------------------------------------
-// ระบบพิมพ์และแปลงวันที่อัจฉริยะ (Smart Date Input)
-// ----------------------------------------------------
 const SmartDateInput = ({ value, onChange, placeholder = "วว/ดด/ปปปป หรือ 150926", className, required }: any) => {
     const [display, setDisplay] = useState("");
 
@@ -122,7 +119,6 @@ const SmartDateInput = ({ value, onChange, placeholder = "วว/ดด/ปป�
         />
     );
 };
-// ----------------------------------------------------
 
 function LoginScreen({ onLogin, staffList }: { onLogin: (s: Session) => void, staffList: string[] }) {
   const [selectedName, setSelectedName] = useState<string | null>(null); 
@@ -247,7 +243,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false); 
   const [historyMed, setHistoryMed] = useState<any>(null); 
   const [historyRows, setHistoryRows] = useState<any[]>([]); 
-  const [historyLoading, setHistoryLoading] = useState(false); 
   const [allTransactions, setAllTransactions] = useState<any[]>([]);
   
   const [globalPeriodMode, setGlobalPeriodMode] = useState<'1m' | '2m' | '3m' | 'custom'>('1m'); 
@@ -302,15 +297,17 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       if (error) throw error; 
       if (data) {
         setMedicines(data);
-        // ตรวจสอบ QR Code scan หลังจากโหลดข้อมูลยาเสร็จสมบูรณ์
+        
+        // ตรวจสอบและดักจับพารามิเตอร์ scan จาก QR Code ทันทีหลังจากข้อมูลยาโหลดเสร็จ
         if (typeof window !== 'undefined') {
            const params = new URLSearchParams(window.location.search);
            const scanId = params.get('scan');
            if (scanId) {
-              const matchedMed = data.find((m: any) => String(m.id) === String(scanId));
-              if (matchedMed) {
-                 openStockModal(matchedMed, 'out');
+              const targetMed = data.find((m: any) => String(m.id) === String(scanId));
+              if (targetMed) {
+                 openStockModal(targetMed, 'out');
               }
+              // ล้างค่า URL scan ออกเพื่อไม่ให้เด้งซ้ำเวลาปิด Modal
               window.history.replaceState({}, document.title, window.location.pathname);
            }
         }
@@ -361,18 +358,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     const savedCat = localStorage.getItem(`saved_cat_${session.id}`); 
     if (savedCat) setSelectedCategory(savedCat === "all" ? "all" : Number(savedCat)); 
   }, []);
-
-  useEffect(() => { 
-    if (globalPeriodMode !== 'custom') { 
-      const end = new Date(); 
-      const start = new Date(); 
-      if (globalPeriodMode === '1m') start.setMonth(start.getMonth() - 1); 
-      if (globalPeriodMode === '2m') start.setMonth(start.getMonth() - 2); 
-      if (globalPeriodMode === '3m') start.setMonth(start.getMonth() - 3); 
-      setGlobalEndDate(end.toISOString().split('T')[0]); 
-      setGlobalStartDate(start.toISOString().split('T')[0]); 
-    } 
-  }, [globalPeriodMode]);
 
   const handleSelectCategory = (catId: number | "all") => { 
     setSelectedCategory(catId); 
@@ -629,11 +614,11 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       await supabase.from("stock_transactions").insert([txPayload]);
       await fetchMedicines(); 
       setIsStockModalOpen(false); 
-      if (isHistoryModalOpen && selectedMed) { 
-        const { data: freshMed } = await supabase.from("medicines").select(`*, medicine_lots (*)`).eq("id", selectedMed.id).single(); 
+      if (isHistoryModalOpen && historyMed) { 
+        const { data: freshMed } = await supabase.from("medicines").select(`*, medicine_lots (*)`).eq("id", historyMed.id).single(); 
         if (freshMed) { 
           setHistoryMed(freshMed); 
-          const { data: txs } = await supabase.from("stock_transactions").select("*").eq("medicine_id", String(selectedMed.id)).order("created_at", { ascending: false }); 
+          const { data: txs } = await supabase.from("stock_transactions").select("*").eq("medicine_id", String(historyMed.id)).order("created_at", { ascending: false }); 
           setHistoryRows(txs || []); 
         }
       }
@@ -668,12 +653,12 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   };
 
   const openHistoryModal = async (med: any) => { 
-    setHistoryMed(med); setIsHistoryModalOpen(true); setHistoryLoading(true); 
+    setHistoryMed(med); setIsHistoryModalOpen(true); 
     try { 
       const { data, error } = await supabase.from("stock_transactions").select("*").eq("medicine_id", String(med.id)).order("created_at", { ascending: false }); 
       if (error) throw error; 
       setHistoryRows(data || []); 
-    } catch (error) { setHistoryRows([]); } finally { setHistoryLoading(false); } 
+    } catch (error) { setHistoryRows([]); } 
   };
   
   const formatHistoryDate = (iso: string) => { 
@@ -1294,7 +1279,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                    <p className="text-xs text-slate-500 mt-1">รหัส HosXP: <span className="font-bold">{historyMed.hosxp_icode || "-"}</span> | ตู้: <span className="font-bold">{getCategoryName(historyMed.cabinet_category)}</span></p>
                 </div>
 
-                {/* โน้ตผู้มาเยือนเฉพาะยานี้ */}
+                {/* โน้ตผู้มาเยือนสำหรับยานี้ */}
                 <div className="mb-6 bg-amber-50/70 border border-amber-200/60 rounded-2xl p-4 shadow-sm">
                    <h3 className="text-xs font-bold text-amber-800 mb-2 flex items-center gap-1.5"><MessageSquareText size={15}/> โน้ตผู้มาเยือนสำหรับยานี้</h3>
                    {visitorNotes.filter(n => n.medicine_id?.toString() === historyMed.id?.toString()).length === 0 ? (
@@ -1394,7 +1379,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
 }
 
 export default function StockCardPage() {
-  const [session, setSession] = useState<Session | null>(null); 
+  const [session, SessionState] = useState<Session | null>(null); 
   const [checkedSession, setCheckedSession] = useState(false);
   const [staffList, setStaffList] = useState<string[]>(DEFAULT_STAFF_LIST);
 
@@ -1411,15 +1396,15 @@ export default function StockCardPage() {
   useEffect(() => { 
     try { 
       const raw = localStorage.getItem(SESSION_KEY); 
-      if (raw) setSession(JSON.parse(raw)); 
+      if (raw) SessionState(JSON.parse(raw)); 
     } catch {} 
     fetchStaffNames();
     setCheckedSession(true); 
   }, []);
 
-  const handleLogout = () => { localStorage.removeItem(SESSION_KEY); setSession(null); };
+  const handleLogout = () => { localStorage.removeItem(SESSION_KEY); SessionState(null); };
 
   if (!checkedSession) return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-400">กำลังโหลด...</div>;
-  if (!session) return <LoginScreen staffList={staffList} onLogin={setSession} />;
-  return <StockCardApp session={session} onLogout={handleLogout} staffList={staffList} refreshStaffList={fetchStaffNames} />;
+  if (!SessionState) return <LoginScreen staffList={staffList} onLogin={SessionState} />;
+  return <StockCardApp session={SessionState} onLogout={handleLogout} staffList={staffList} refreshStaffList={fetchStaffNames} />;
 }
