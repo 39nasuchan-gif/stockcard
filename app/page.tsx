@@ -257,6 +257,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const [qrTargetId, setQrTargetId] = useState("all"); 
   const [showQRPrintView, setShowQRPrintView] = useState(false); 
   const [qrPrintData, setQrPrintData] = useState<any[]>([]);
+  const [baseUrl, setBaseUrl] = useState("");
   
   const [isImportModalOpen, setIsImportModalOpen] = useState(false); 
   const [importText, setImportText] = useState(""); 
@@ -287,13 +288,16 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const [isExpDashboardOpen, setIsExpDashboardOpen] = useState(false);
   const [expFilterDays, setExpFilterDays] = useState<number>(30); 
 
-  // State สำหรับฟอร์มโน้ตผู้มาเยือนในหน้าดีเทลยา (กรณีสแกน QR มาแบบไม่ได้ Login)
   const [qrVisitorLotId, setQrVisitorLotId] = useState("");
   const [qrVisitorInputMode, setQrVisitorInputMode] = useState<'base' | 'pack'>('base');
   const [qrVisitorAmount, setQrVisitorAmount] = useState("");
   const [qrVisitorPackCount, setQrVisitorPackCount] = useState("");
   const [qrVisitorName, setQrVisitorName] = useState("");
   const [qrVisitorSubmitting, setQrVisitorSubmitting] = useState(false);
+
+  useEffect(() => {
+    setBaseUrl(typeof window !== 'undefined' ? window.location.origin : '');
+  }, []);
 
   const fetchMedicines = async () => { 
     try { 
@@ -304,7 +308,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         
         if (typeof window !== 'undefined') {
            const params = new URLSearchParams(window.location.search);
-           const scanId = params.get('scan');
+           const scanId = params.get('id') || params.get('scan') || params.get('med');
            if (scanId) {
               const targetMed = data.find((m: any) => String(m.id) === String(scanId));
               if (targetMed) {
@@ -362,6 +366,19 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       if (savedCat) setSelectedCategory(savedCat === "all" ? "all" : Number(savedCat)); 
     }
   }, []);
+
+  // Validation ป้องกันกรณีตู้ถูกลบไปแล้วแต่ใน localStorage ยังจำไว้อยู่
+  useEffect(() => {
+    if (categoriesList.length > 0 && selectedCategory !== "all") {
+      const isCategoryExists = categoriesList.some(cat => String(cat.id) === String(selectedCategory));
+      if (!isCategoryExists) {
+        setSelectedCategory("all");
+        if (session) {
+          localStorage.removeItem(`saved_cat_${session.id}`);
+        }
+      }
+    }
+  }, [categoriesList, selectedCategory, session]);
 
   const handleSelectCategory = (catId: number | "all") => { 
     setSelectedCategory(catId); 
@@ -480,7 +497,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     } catch (error: any) { alert("บันทึกไม่สำเร็จ: " + error.message); } finally { setVisitorSubmitting(false); }
   };
 
-  // Handler สำหรับบันทึกโน้ตผู้มาเยือนจากหน้าดีเทลยา (กรณีสแกน QR แบบไม่ได้ Login)
   const handleQrVisitorSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!qrVisitorLotId || !qrVisitorName || !historyMed) return alert("กรุณากรอกข้อมูลให้ครบถ้วน");
@@ -495,7 +511,8 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       if (!packs || packs <= 0) return alert("กรุณาระบุจำนวนกล่องให้ถูกต้อง");
       totalItems = Math.round(packs * lot.pack_size);
     }
-    if (totalItems > lot.current_stock) return alert(`สต็อกไม่พอ! ต้องการเบิก ${totalItems} แต่มีแค่ ${lot.current_stock}`);
+    
+    // เอาการ Validation เช็คสต็อกออกไป เพื่อให้ Visitor บันทึกแจ้งจำนวนที่เบิกจริงได้เสมอ แม้ในระบบสต็อกจะหมดก็ตาม
     
     setQrVisitorSubmitting(true);
     try {
@@ -511,7 +528,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       alert("บันทึกโน้ตผู้มาเยือนสำเร็จเรียบร้อย!");
       setQrVisitorLotId(""); setQrVisitorAmount(""); setQrVisitorPackCount(""); setQrVisitorName("");
       fetchVisitorNotes();
-      // รีเฟรชข้อมูลดีเทลยา
       const { data: freshMed } = await supabase.from("medicines").select(`*, medicine_lots (*)`).eq("id", historyMed.id).single();
       if (freshMed) setHistoryMed(freshMed);
     } catch (error: any) {
@@ -606,6 +622,13 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       if (!packs || packs <= 0 || !size || size <= 0) { setIsSubmitting(false); return alert("ระบุข้อมูลให้ครบถ้วน"); } 
       totalItems = Math.round(packs * size); 
     }
+    
+    // ดักวันที่กรณีรับเข้าล่วงหน้า
+    if (stockAction === 'in' && isPendingStock && !expectedDate) {
+       setIsSubmitting(false);
+       return alert("กรุณาระบุวันที่คาดว่าจะเข้า (สำหรับรายการรับเข้าล่วงหน้า)");
+    }
+    
     try {
       const pending = stockAction === 'in' && isPendingStock; 
       let finalLotId = selectedLotId;
@@ -660,7 +683,13 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       }
       if (pending) txPayload.expected_date = expectedDate || null;
       
-      await supabase.from("stock_transactions").insert([txPayload]);
+      // อัปเดตการดักจับข้อผิดพลาดการ Insert Transaction เพื่อไม่ให้เงียบหาย
+      const { error: txError } = await supabase.from("stock_transactions").insert([txPayload]);
+      if (txError) {
+         console.error("Transaction Error:", txError);
+         throw new Error("อัปเดตสต็อกสำเร็จ แต่บันทึกประวัติล้มเหลว กรุณาตรวจสอบฐานข้อมูล! (" + txError.message + ")");
+      }
+      
       await fetchMedicines(); 
       setIsStockModalOpen(false); 
       if (isHistoryModalOpen && historyMed) { 
@@ -668,10 +697,41 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         if (freshMed) { 
           setHistoryMed(freshMed); 
           const { data: txs } = await supabase.from("stock_transactions").select("*").eq("medicine_id", String(historyMed.id)).order("created_at", { ascending: false }); 
-          setHistoryRows(txs || []); 
+          // กรอง Visitor notes ออกจากประวัติรายการล่าสุดแบบเด็ดขาด
+          setHistoryRows((txs || []).filter((r: any) => r.status !== 'visitor_note' && r.status !== 'visitor_acknowledged')); 
         }
       }
     } catch (error: any) { alert("อัปเดตสต็อกไม่สำเร็จ: " + error.message); } finally { setIsSubmitting(false); }
+  };
+
+  const handleConfirmPendingStock = async (row: any) => {
+    if (!confirm(`ยืนยันว่าได้รับยาจำนวน ${row.amount} แล้ว และต้องการเพิ่มเข้าสต็อกใช่หรือไม่?`)) return;
+    try {
+      // ดึงสต็อกปัจจุบันของล็อตนั้นก่อน
+      const { data: lotData, error: lotErr } = await supabase.from("medicine_lots").select("current_stock").eq("id", row.lot_id).single();
+      if (lotErr) throw lotErr;
+
+      // บวกสต็อกเพิ่ม
+      const { error: updateLotErr } = await supabase.from("medicine_lots").update({ current_stock: lotData.current_stock + row.amount }).eq("id", row.lot_id);
+      if (updateLotErr) throw updateLotErr;
+
+      // เปลี่ยนสถานะ transaction เป็น completed
+      const { error: txErr } = await supabase.from("stock_transactions").update({ status: 'completed' }).eq("id", row.id);
+      if (txErr) throw txErr;
+
+      alert("อัปเดตสต็อกเรียบร้อยแล้ว!");
+      
+      // รีเฟรชข้อมูล
+      await fetchMedicines();
+      const { data: freshMed } = await supabase.from("medicines").select(`*, medicine_lots (*)`).eq("id", historyMed.id).single(); 
+      if (freshMed) { 
+        setHistoryMed(freshMed); 
+        const { data: txs } = await supabase.from("stock_transactions").select("*").eq("medicine_id", String(historyMed.id)).order("created_at", { ascending: false }); 
+        setHistoryRows((txs || []).filter((r: any) => r.status !== 'visitor_note' && r.status !== 'visitor_acknowledged')); 
+      }
+    } catch (e: any) {
+      alert("เกิดข้อผิดพลาด: " + e.message);
+    }
   };
 
   const openStockModal = (med: any, action: 'in' | 'out') => { 
@@ -706,7 +766,8 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     try { 
       const { data, error } = await supabase.from("stock_transactions").select("*").eq("medicine_id", String(med.id)).order("created_at", { ascending: false }); 
       if (error) throw error; 
-      setHistoryRows(data || []); 
+      // กรองโน้ตผู้มาเยือนออก เพื่อไม่ให้แสดงซ้ำในประวัติการทำรายการ (โชว์เฉพาะรายการตัดจ่าย/รับเข้าของระบบเท่านั้น)
+      setHistoryRows((data || []).filter((r: any) => r.status !== 'visitor_note' && r.status !== 'visitor_acknowledged')); 
     } catch (error) { setHistoryRows([]); } 
   };
   
@@ -874,7 +935,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {qrPrintData.map((med) => (
             <div key={med.id} className="border-2 border-dashed border-gray-400 p-4 flex flex-col items-center justify-center text-center">
-              <QRCodeSVG value={`${typeof window !== 'undefined' ? window.location.origin : ''}/?scan=${med.id}`} size={100} />
+              <QRCodeSVG value={`${baseUrl}/?id=${med.id}`} size={100} />
               <div className="mt-3 font-bold text-sm leading-tight text-black">{med.name}</div>
             </div>
           ))}
@@ -999,10 +1060,14 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                   <div className="flex justify-between items-start border-b border-white/50 pb-3">
                     <div className="w-full">
                       <div onClick={() => openHistoryModal(med)} className="font-extrabold text-slate-800 text-lg cursor-pointer hover:text-blue-500 leading-tight">{med.name}</div>
-                      <div className="text-xs text-slate-500 mt-1.5">รหัส: <span className="font-bold">{med.hosxp_icode || "-"}</span></div>
+                      <div className="text-xs text-slate-500 mt-1.5 flex flex-wrap gap-2 items-center">
+                         <span>รหัส: <span className="font-bold">{med.hosxp_icode || "-"}</span></span>
+                         <span>• ตู้: <span className="font-bold">{getCategoryName(med.cabinet_category)}</span></span>
+                      </div>
+                      {med.note && <div className="text-[11px] text-amber-700 font-medium bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg mt-1.5 w-fit">หมายเหตุ: {med.note}</div>}
                     </div>
                     {session && (
-                      <div className="flex flex-col gap-2 w-[72px]">
+                      <div className="flex flex-col gap-2 w-[72px] shrink-0 ml-2">
                         <div className="flex gap-1.5"><button onClick={() => openEditMedModal(med)} className="flex-1 p-2 bg-white/60 rounded-xl text-slate-500 shadow-sm"><Edit size={14}/></button><button onClick={() => handleDeleteMed(med.id)} className="flex-1 p-2 bg-white/60 rounded-xl text-slate-500 shadow-sm"><Trash2 size={14}/></button></div>
                         <button onClick={() => toggleAvailability(med)} className={`w-full py-1.5 text-[10px] font-bold rounded-xl shadow-sm ${isAvail ? 'bg-emerald-50 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{isAvail ? "เบิกได้" : "เป็น 0"}</button>
                       </div>
@@ -1348,6 +1413,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 text-center">
                  <h1 className="text-2xl font-extrabold text-slate-800">{historyMed.name}</h1>
                  <p className="text-xs text-slate-500 mt-1">รหัส HosXP: <span className="font-bold">{historyMed.hosxp_icode || "-"}</span> | ตู้: <span className="font-bold">{getCategoryName(historyMed.cabinet_category)}</span></p>
+                 {historyMed.note && <div className="text-xs font-medium text-amber-700 mt-2 bg-amber-50 border border-amber-100 px-3 py-1.5 rounded-xl inline-block">หมายเหตุ: {historyMed.note}</div>}
               </div>
 
               {/* ส่วนแสดงสต็อกคงเหลือแบ่งตาม EXP */}
@@ -1387,7 +1453,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                 </div>
               ) : (
                 <div className="bg-amber-50/90 border border-amber-200 rounded-3xl p-5 shadow-sm space-y-3">
-                   <h3 className="text-sm font-bold text-amber-800 flex items-center gap-2"><MessageSquareText size={18}/> บันทึกโน้ตผู้มาเยือน (เบิกจ่ายยา)</h3>
+                   <h3 className="text-sm font-bold text-amber-800 flex items-center gap-2"><MessageSquareText size={18}/> บันทึกโน้ตผู้มาเยือน (แจ้งว่ายังไม่ได้รับเข้า)</h3>
                    <form onSubmit={handleQrVisitorSubmit} className="space-y-3">
                       <div>
                          <label className="block text-xs font-bold text-slate-700 mb-1">เลือกล็อต EXP *</label>
@@ -1415,13 +1481,13 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                          <label className="block text-xs font-bold text-slate-700 mb-1">ชื่อผู้บันทึก *</label>
                          <input type="text" required placeholder="ชื่อของคุณ" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-medium outline-none shadow-sm" value={qrVisitorName} onChange={(e) => setQrVisitorName(e.target.value)} />
                       </div>
-                      <button type="submit" disabled={qrVisitorSubmitting} className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold p-3.5 rounded-xl shadow-md transition-all disabled:opacity-60">{qrVisitorSubmitting ? 'กำลังบันทึก...' : 'บันทึกโน้ตผู้มาเยือน'}</button>
+                      <button type="submit" disabled={qrVisitorSubmitting} className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold p-3.5 rounded-xl shadow-md transition-all disabled:opacity-60">{qrVisitorSubmitting ? 'กำลังบันทึก...' : 'บันทึกโน้ตแจ้งเตือน'}</button>
                    </form>
                 </div>
               )}
 
-              {/* โน้ตผู้มาเยือนสำหรับยานี้ (แสดงเฉพาะที่รอตรวจสอบ และมี scroll เลื่อน) */}
-              <div className="bg-amber-50/70 border border-amber-200/60 rounded-3xl p-5 shadow-sm">
+              {/* โน้ตผู้มาเยือนสำหรับยานี้ (เอาไว้แจ้งเตือน และมีปุ่มรับทราบเหมือนหน้าหลัก) */}
+              <div className="bg-amber-50/70 border border-amber-200/60 rounded-3xl p-5 shadow-sm mt-4">
                  <h3 className="text-sm font-bold text-amber-800 mb-3 flex items-center gap-2"><MessageSquareText size={18}/> โน้ตผู้มาเยือนสำหรับยานี้ (รอตรวจสอบ)</h3>
                  {visitorNotes.filter(n => n.medicine_id?.toString() === historyMed.id?.toString() && n.status === 'visitor_note').length === 0 ? (
                     <div className="text-xs text-amber-600/70 py-2">ไม่มีโน้ตผู้มาเยือนที่รอตรวจสอบสำหรับยานี้</div>
@@ -1430,13 +1496,15 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                        {visitorNotes.filter(n => n.medicine_id?.toString() === historyMed.id?.toString() && n.status === 'visitor_note').map(note => (
                           <div key={note.id} className="bg-white/90 border border-amber-100 p-3.5 rounded-2xl flex justify-between items-center text-xs shadow-sm">
                              <div>
-                                <div className="font-bold text-slate-800">เบิกออก <span className="text-red-600">{note.amount} ชิ้น</span> (EXP: {note.exp_date})</div>
+                                <div className="font-bold text-slate-800">แจ้งเบิก <span className="text-red-600">{note.amount} ชิ้น</span> (EXP: {note.exp_date})</div>
                                 <div className="text-[10px] text-slate-500 mt-1 font-medium">ผู้บันทึก: <span className="font-bold text-slate-700">{note.staff_name}</span> | {formatHistoryDate(note.created_at)}</div>
                              </div>
                              {session ? (
-                                <button onClick={() => handleAcknowledgeNote(note.id)} className="px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white border border-emerald-200 rounded-xl font-bold transition-all shadow-sm">รับทราบ</button>
+                                <button onClick={() => handleAcknowledgeNote(note.id)} title="รับทราบข้อความนี้" className="px-3 py-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white border border-emerald-200 rounded-xl font-bold transition-all shadow-sm flex items-center gap-1.5">
+                                   <Check size={16} /> รับทราบ
+                                </button>
                              ) : (
-                                <span className="text-[10px] font-bold px-2.5 py-1 rounded-xl bg-amber-100 text-amber-800">รอเจ้าหน้าที่ตรวจสอบ</span>
+                                <span className="text-[10px] font-bold px-2.5 py-1 rounded-xl bg-amber-100 text-amber-800">รอตรวจสอบ</span>
                              )}
                           </div>
                        ))}
@@ -1455,16 +1523,17 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                       const pSize = lotInfo?.pack_size || 100;
                       const uName = lotInfo?.unit_name || "'s";
                       const formattedText = formatBoxString(row.amount, pSize, uName);
+                      const isPending = row.status === 'pending';
 
                       return (
-                         <div key={row.id} className="bg-white border border-slate-200/70 rounded-3xl p-4 shadow-sm flex items-start justify-between gap-3">
+                         <div key={row.id} className={`bg-white border ${isPending ? 'border-amber-300' : 'border-slate-200/70'} rounded-3xl p-4 shadow-sm flex items-start justify-between gap-3`}>
                            <div className="flex items-start gap-3">
-                              <div className={`p-2.5 rounded-2xl shrink-0 mt-0.5 ${row.action === 'in' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                                 {row.action === 'in' ? <PackagePlus size={18}/> : <PackageMinus size={18}/>}
+                              <div className={`p-2.5 rounded-2xl shrink-0 mt-0.5 ${row.action === 'in' ? (isPending ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700') : 'bg-red-100 text-red-700'}`}>
+                                 {row.action === 'in' ? (isPending ? <Clock size={18}/> : <PackagePlus size={18}/>) : <PackageMinus size={18}/>}
                               </div>
                               <div>
-                                 <div className={`text-sm font-extrabold ${row.action === 'in' ? 'text-emerald-700' : 'text-red-700'}`}>
-                                    {row.action === 'in' ? 'รับเข้า' : 'ตัดจ่าย'} {formattedText}
+                                 <div className={`text-sm font-extrabold ${row.action === 'in' ? (isPending ? 'text-amber-700' : 'text-emerald-700') : 'text-red-700'}`}>
+                                    {row.action === 'in' ? (isPending ? 'รอรับเข้าล่วงหน้า' : 'รับเข้า') : 'ตัดจ่าย'} {formattedText}
                                  </div>
                                  <div className="text-xs text-slate-500 font-medium mt-0.5">
                                     (รวมทั้งหมด {row.amount} {uName === "'s" ? "เม็ด" : uName})
@@ -1472,15 +1541,25 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                                  <div className="text-xs text-rose-500 font-bold mt-1.5 flex items-center gap-1">
                                     <CalendarDays size={12}/> EXP: {row.exp_date || "-"}
                                  </div>
-                                 <div className="text-[10px] text-slate-400 mt-1 font-medium">
+                                 {isPending && row.expected_date && (
+                                    <div className="text-[11px] text-amber-800 font-bold mt-1.5 bg-amber-100 px-2 py-1 rounded-lg inline-block">
+                                      กำหนดเข้า: {row.expected_date}
+                                    </div>
+                                 )}
+                                 <div className="text-[10px] text-slate-400 mt-1.5 font-medium">
                                     {formatHistoryDate(row.created_at)} {row.edit_note ? `[${row.edit_note}]` : ''}
                                  </div>
                               </div>
                            </div>
-                           <div className="shrink-0">
+                           <div className="flex flex-col items-end gap-2 shrink-0">
                               <div className="text-[11px] font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded-full border border-slate-200 flex items-center gap-1">
                                  <User size={10} className="text-slate-400"/> {row.staff_name}
                               </div>
+                              {session && isPending && (
+                                <button onClick={() => handleConfirmPendingStock(row)} className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-bold rounded-xl shadow-sm transition-all flex items-center gap-1 mt-1">
+                                  <Check size={14}/> ได้รับยาแล้ว
+                                </button>
+                              )}
                            </div>
                          </div>
                       );
@@ -1551,6 +1630,7 @@ export default function StockCardPage() {
   const [session, SessionState] = useState<Session | null>(null); 
   const [checkedSession, setCheckedSession] = useState(false);
   const [staffList, setStaffList] = useState<string[]>(DEFAULT_STAFF_LIST);
+  const [isVisitorMode, setIsVisitorMode] = useState(false);
 
   const fetchStaffNames = async () => {
     try {
@@ -1567,12 +1647,29 @@ export default function StockCardPage() {
       const raw = localStorage.getItem(SESSION_KEY); 
       if (raw) SessionState(JSON.parse(raw)); 
     } catch {} 
+    
+    if (typeof window !== 'undefined') {
+       const params = new URLSearchParams(window.location.search);
+       if (params.get('id') || params.get('scan') || params.get('med')) {
+          setIsVisitorMode(true);
+       }
+    }
+
     fetchStaffNames();
     setCheckedSession(true); 
   }, []);
 
-  const handleLogout = () => { localStorage.removeItem(SESSION_KEY); SessionState(null); };
+  const handleLogout = () => { 
+    localStorage.removeItem(SESSION_KEY); 
+    SessionState(null); 
+    setIsVisitorMode(false);
+  };
 
   if (!checkedSession) return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-400">กำลังโหลด...</div>;
+
+  if (!session && !isVisitorMode) {
+     return <LoginScreen onLogin={SessionState} staffList={staffList} />;
+  }
+
   return <StockCardApp session={session} onLogout={handleLogout} staffList={staffList} refreshStaffList={fetchStaffNames} />;
 }
