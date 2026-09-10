@@ -679,7 +679,14 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       };
       
       if (txDate) {
-         txPayload.created_at = `${txDate}T12:00:00.000Z`;
+         // ดึงเวลาปัจจุบัน (ชั่วโมง นาที วินาที) ของเครื่องผู้ใช้งานมาใช้ร่วมกับวันที่เลือก
+         const now = new Date();
+         const hours = String(now.getHours()).padStart(2, '0');
+         const minutes = String(now.getMinutes()).padStart(2, '0');
+         const seconds = String(now.getSeconds()).padStart(2, '0');
+         
+         // ส่งค่าแบบ ISO String ที่ถูกต้องตาม Timezone ท้องถิ่น
+         txPayload.created_at = `${txDate}T${hours}:${minutes}:${seconds}+07:00`;
       }
       if (pending) txPayload.expected_date = expectedDate || null;
       
