@@ -1167,6 +1167,31 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
               const samplePackSize = med.medicine_lots?.[0]?.pack_size || 1;
               const sampleUnitName = med.medicine_lots?.[0]?.unit_name || "'s";
               // ----------------------------------------------------
+              // --- [เพิ่มใหม่] คำนวณ Safety Stock และ Max Level ---
+              const safetyStock = Math.ceil(avgPerDay * 3); // สำรองเผื่อฉุกเฉิน 3 วัน
+              const configuredMinStock = med.min_stock > 0 ? med.min_stock : Math.ceil(avgPerDay * 7); // ถ้าไม่ได้ตั้งค่า ใช้เรท 7 วันเป็น Min
+              const maxLevel = configuredMinStock + suggest2Wk; // Max Level = Min + เรท 2 สัปดาห์
+              // ----------------------------------------------------
+              {/* แสดงข้อมูล Min / Safety / Max Level บนการ์ด */}
+              {session && (
+                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-2.5 text-xs space-y-1 mt-1">
+                  <div className="text-[10px] font-bold text-slate-500 flex justify-between">
+                    <span>🛡️ คลังสินค้า & สต็อกสำรอง:</span>
+                  </div>
+                  <div className="flex justify-between text-slate-700">
+                    <span>Safety Stock (เผื่อ 3 วัน):</span>
+                    <span className="font-bold text-amber-600">{formatBoxString(safetyStock, samplePackSize, sampleUnitName)}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-700">
+                    <span>Min Stock (จุดสั่งซื้อ):</span>
+                    <span className="font-bold text-red-600">{formatBoxString(configuredMinStock, samplePackSize, sampleUnitName)}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-700">
+                    <span>Max Level (สต็อกสูงสุด):</span>
+                    <span className="font-bold text-emerald-600">{formatBoxString(maxLevel, samplePackSize, sampleUnitName)}</span>
+                  </div>
+                </div>
+              )}
 
               return (
                 <div key={med.id} className={`bg-white/70 backdrop-blur-xl rounded-3xl shadow-sm border p-5 flex flex-col gap-3.5 transition-all ${!isAvail ? 'border-red-300/80 bg-red-50/70' : 'border-white/80 hover:shadow-md'}`}>
@@ -1443,6 +1468,16 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                   <div><label className="block text-sm font-medium mb-1.5 text-slate-600">ชื่อยา *</label><input type="text" required className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400" value={medFormData.name} onChange={(e) => setMedFormData({ ...medFormData, name: e.target.value })} /></div>
                   <div><label className="block text-sm font-medium mb-1.5 text-slate-600">รหัส HosXP</label><input type="text" className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400" value={medFormData.hosxp_icode} onChange={(e) => setMedFormData({ ...medFormData, hosxp_icode: e.target.value })} /></div>
                 </div>
+                <div>
+  <label className="block text-sm font-medium mb-1.5 text-slate-600">สต็อกขั้นต่ำ (Min Stock)</label>
+  <input 
+    type="number" 
+    min="0" 
+    className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400" 
+    value={medFormData.min_stock} 
+    onChange={(e) => setMedFormData({ ...medFormData, min_stock: e.target.value })} 
+  />
+</div>
                 <div><label className="block text-sm font-medium mb-1.5 text-slate-600">หมวดหมู่ตู้ยา</label><select className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 font-medium text-slate-700" value={medFormData.cabinet_category} onChange={(e) => setMedFormData({ ...medFormData, cabinet_category: e.target.value })}>{categoriesList?.map(cat => <option key={cat.id} value={cat.id.toString()}>{cat.name}</option>)}</select></div>
                 <div><label className="block text-sm font-medium mb-1.5 text-slate-600">หมายเหตุ</label><textarea className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400" rows={2} value={medFormData.note} onChange={(e) => setMedFormData({ ...medFormData, note: e.target.value })} /></div>
                 <div className="pt-4 flex gap-3"><button type="button" onClick={() => setIsMedModalOpen(false)} className="flex-1 bg-white/60 border border-white hover:bg-white/90 p-3.5 rounded-xl font-medium text-slate-600 shadow-sm">ยกเลิก</button><button type="submit" className="flex-1 bg-blue-500 hover:bg-blue-600 text-white p-3.5 rounded-xl font-medium shadow-md shadow-blue-200 transition-colors">{isEditing ? 'บันทึกการแก้ไข' : 'บันทึกยาใหม่'}</button></div>
