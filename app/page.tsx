@@ -599,7 +599,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           const totalOut = txs.reduce((sum, tx) => sum + tx.amount, 0);
           const avgPerDay = totalOut / daysDiff;
 
-          // คำนวณ + เผื่อคาดเคลื่อน 15%
+          // สูตรคำนวณ + เผื่อคาดเคลื่อน 15%
           const oneWk = Math.ceil((avgPerDay * 7) * 1.15);
           const twoWk = Math.ceil((avgPerDay * 14) * 1.15);
 
@@ -1144,7 +1144,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
               const activeLots = (med.medicine_lots || []).filter((l: any) => l.current_stock > 0).sort((a: any, b: any) => new Date(a.exp_date).getTime() - new Date(b.exp_date).getTime());
               const isAvail = med.is_available !== false;
 
-              // --- [อัปเดต] คำนวณเรทเบิก 1wk / 2wk + เผื่อคาดเคลื่อน 15% ---
+              // คำนวณเรทเบิก 1wk / 2wk + เผื่อคาดเคลื่อน 15% (Buffer 15%)
               const startDt = new Date(cardCalcStartDate);
               startDt.setHours(0,0,0,0);
               const endDt = new Date(cardCalcEndDate);
@@ -1160,38 +1160,16 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
               const totalOutPeriod = medTxs.reduce((sum: number, tx: any) => sum + tx.amount, 0);
               const avgPerDay = totalOutPeriod / daysDiff;
 
-              // คูณเรทตามเวลา + เผื่อคาดเคลื่อน 15% (Buffer 15%)
               const suggest1Wk = Math.ceil((avgPerDay * 7) * 1.15);
               const suggest2Wk = Math.ceil((avgPerDay * 14) * 1.15);
 
+              // คำนวณ Safety Stock, Min Stock และ Max Level
+              const safetyStock = Math.ceil(avgPerDay * 3); // สำรองฉุกเฉิน 3 วัน
+              const configuredMinStock = med.min_stock > 0 ? med.min_stock : Math.ceil(avgPerDay * 7 * 1.15); // ถ้าไม่ได้ตั้งค่า ใช้เรท 7 วัน + 15% เป็น Min
+              const maxLevel = configuredMinStock + suggest2Wk; // Max Level = Min + เรท 2 สัปดาห์
+
               const samplePackSize = med.medicine_lots?.[0]?.pack_size || 1;
               const sampleUnitName = med.medicine_lots?.[0]?.unit_name || "'s";
-              // ----------------------------------------------------
-              // --- [เพิ่มใหม่] คำนวณ Safety Stock และ Max Level ---
-              const safetyStock = Math.ceil(avgPerDay * 3); // สำรองเผื่อฉุกเฉิน 3 วัน
-              const configuredMinStock = med.min_stock > 0 ? med.min_stock : Math.ceil(avgPerDay * 7); // ถ้าไม่ได้ตั้งค่า ใช้เรท 7 วันเป็น Min
-              const maxLevel = configuredMinStock + suggest2Wk; // Max Level = Min + เรท 2 สัปดาห์
-              // ----------------------------------------------------
-              {/* แสดงข้อมูล Min / Safety / Max Level บนการ์ด */}
-              {session && (
-                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-2.5 text-xs space-y-1 mt-1">
-                  <div className="text-[10px] font-bold text-slate-500 flex justify-between">
-                    <span>🛡️ คลังสินค้า & สต็อกสำรอง:</span>
-                  </div>
-                  <div className="flex justify-between text-slate-700">
-                    <span>Safety Stock (เผื่อ 3 วัน):</span>
-                    <span className="font-bold text-amber-600">{formatBoxString(safetyStock, samplePackSize, sampleUnitName)}</span>
-                  </div>
-                  <div className="flex justify-between text-slate-700">
-                    <span>Min Stock (จุดสั่งซื้อ):</span>
-                    <span className="font-bold text-red-600">{formatBoxString(configuredMinStock, samplePackSize, sampleUnitName)}</span>
-                  </div>
-                  <div className="flex justify-between text-slate-700">
-                    <span>Max Level (สต็อกสูงสุด):</span>
-                    <span className="font-bold text-emerald-600">{formatBoxString(maxLevel, samplePackSize, sampleUnitName)}</span>
-                  </div>
-                </div>
-              )}
 
               return (
                 <div key={med.id} className={`bg-white/70 backdrop-blur-xl rounded-3xl shadow-sm border p-5 flex flex-col gap-3.5 transition-all ${!isAvail ? 'border-red-300/80 bg-red-50/70' : 'border-white/80 hover:shadow-md'}`}>
@@ -1232,7 +1210,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                   {session && (
                     <div className="bg-cyan-50/60 border border-cyan-100 rounded-2xl p-2.5 text-xs space-y-1">
                       <div className="text-[10px] font-bold text-cyan-800">
-                        📊 แนะนำเบิก (อัตโนมัติ):
+                        📊 แนะนำเบิก (+ เผื่อ 15%):
                       </div>
                       <div className="flex justify-between text-slate-700 font-medium">
                         <span>1 สัปดาห์ (7 วัน):</span>
@@ -1241,6 +1219,27 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                       <div className="flex justify-between text-slate-700 font-medium">
                         <span>2 สัปดาห์ (14 วัน):</span>
                         <span className="font-bold text-purple-600">{formatBoxString(suggest2Wk, samplePackSize, sampleUnitName)}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* แสดง Safety Stock, Min Stock และ Max Level บนการ์ด */}
+                  {session && (
+                    <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-2.5 text-xs space-y-1">
+                      <div className="text-[10px] font-bold text-slate-500">
+                        🛡️ คลังสินค้า & สต็อกสำรอง:
+                      </div>
+                      <div className="flex justify-between text-slate-700 font-medium">
+                        <span>Safety Stock (เผื่อ 3 วัน):</span>
+                        <span className="font-bold text-amber-600">{formatBoxString(safetyStock, samplePackSize, sampleUnitName)}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-700 font-medium">
+                        <span>Min Stock (จุดสั่งซื้อ):</span>
+                        <span className="font-bold text-red-600">{formatBoxString(configuredMinStock, samplePackSize, sampleUnitName)}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-700 font-medium">
+                        <span>Max Level (สต็อกสูงสุด):</span>
+                        <span className="font-bold text-emerald-600">{formatBoxString(maxLevel, samplePackSize, sampleUnitName)}</span>
                       </div>
                     </div>
                   )}
@@ -1468,16 +1467,13 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                   <div><label className="block text-sm font-medium mb-1.5 text-slate-600">ชื่อยา *</label><input type="text" required className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400" value={medFormData.name} onChange={(e) => setMedFormData({ ...medFormData, name: e.target.value })} /></div>
                   <div><label className="block text-sm font-medium mb-1.5 text-slate-600">รหัส HosXP</label><input type="text" className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400" value={medFormData.hosxp_icode} onChange={(e) => setMedFormData({ ...medFormData, hosxp_icode: e.target.value })} /></div>
                 </div>
+                
+                {/* เพิ่มช่องกรอก Min Stock */}
                 <div>
-  <label className="block text-sm font-medium mb-1.5 text-slate-600">สต็อกขั้นต่ำ (Min Stock)</label>
-  <input 
-    type="number" 
-    min="0" 
-    className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400" 
-    value={medFormData.min_stock} 
-    onChange={(e) => setMedFormData({ ...medFormData, min_stock: e.target.value })} 
-  />
-</div>
+                  <label className="block text-sm font-medium mb-1.5 text-slate-600">สต็อกขั้นต่ำ (Min Stock)</label>
+                  <input type="number" min="0" className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400" value={medFormData.min_stock} onChange={(e) => setMedFormData({ ...medFormData, min_stock: e.target.value })} placeholder="เช่น 50" />
+                </div>
+
                 <div><label className="block text-sm font-medium mb-1.5 text-slate-600">หมวดหมู่ตู้ยา</label><select className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400 font-medium text-slate-700" value={medFormData.cabinet_category} onChange={(e) => setMedFormData({ ...medFormData, cabinet_category: e.target.value })}>{categoriesList?.map(cat => <option key={cat.id} value={cat.id.toString()}>{cat.name}</option>)}</select></div>
                 <div><label className="block text-sm font-medium mb-1.5 text-slate-600">หมายเหตุ</label><textarea className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400" rows={2} value={medFormData.note} onChange={(e) => setMedFormData({ ...medFormData, note: e.target.value })} /></div>
                 <div className="pt-4 flex gap-3"><button type="button" onClick={() => setIsMedModalOpen(false)} className="flex-1 bg-white/60 border border-white hover:bg-white/90 p-3.5 rounded-xl font-medium text-slate-600 shadow-sm">ยกเลิก</button><button type="submit" className="flex-1 bg-blue-500 hover:bg-blue-600 text-white p-3.5 rounded-xl font-medium shadow-md shadow-blue-200 transition-colors">{isEditing ? 'บันทึกการแก้ไข' : 'บันทึกยาใหม่'}</button></div>
