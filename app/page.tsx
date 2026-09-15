@@ -599,8 +599,9 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           const totalOut = txs.reduce((sum, tx) => sum + tx.amount, 0);
           const avgPerDay = totalOut / daysDiff;
 
-          const oneWk = Math.ceil(avgPerDay * 7);
-          const twoWk = Math.ceil(avgPerDay * 14);
+          // คำนวณ + เผื่อคาดเคลื่อน 15%
+          const oneWk = Math.ceil((avgPerDay * 7) * 1.15);
+          const twoWk = Math.ceil((avgPerDay * 14) * 1.15);
 
           let currentStock = 0;
           let packSize = 1;
@@ -1143,7 +1144,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
               const activeLots = (med.medicine_lots || []).filter((l: any) => l.current_stock > 0).sort((a: any, b: any) => new Date(a.exp_date).getTime() - new Date(b.exp_date).getTime());
               const isAvail = med.is_available !== false;
 
-              // คำนวณเรทเบิก 1wk / 2wk อัตโนมัติจากช่วงวันที่ตั้งไว้บนการ์ด
+              // --- [อัปเดต] คำนวณเรทเบิก 1wk / 2wk + เผื่อคาดเคลื่อน 15% ---
               const startDt = new Date(cardCalcStartDate);
               startDt.setHours(0,0,0,0);
               const endDt = new Date(cardCalcEndDate);
@@ -1158,10 +1159,14 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
               );
               const totalOutPeriod = medTxs.reduce((sum: number, tx: any) => sum + tx.amount, 0);
               const avgPerDay = totalOutPeriod / daysDiff;
-              const suggest1Wk = Math.ceil(avgPerDay * 7);
-              const suggest2Wk = Math.ceil(avgPerDay * 14);
+
+              // คูณเรทตามเวลา + เผื่อคาดเคลื่อน 15% (Buffer 15%)
+              const suggest1Wk = Math.ceil((avgPerDay * 7) * 1.15);
+              const suggest2Wk = Math.ceil((avgPerDay * 14) * 1.15);
+
               const samplePackSize = med.medicine_lots?.[0]?.pack_size || 1;
               const sampleUnitName = med.medicine_lots?.[0]?.unit_name || "'s";
+              // ----------------------------------------------------
 
               return (
                 <div key={med.id} className={`bg-white/70 backdrop-blur-xl rounded-3xl shadow-sm border p-5 flex flex-col gap-3.5 transition-all ${!isAvail ? 'border-red-300/80 bg-red-50/70' : 'border-white/80 hover:shadow-md'}`}>
