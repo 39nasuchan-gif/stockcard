@@ -6,7 +6,7 @@ import {
   Plus, PackagePlus, PackageMinus, X, CalendarDays,
   User, Lock, LogOut, KeyRound, Bell, Check,
   Search, Edit, Trash2, LayoutGrid, History,
-  FileText, Printer, QrCode, ArrowLeft, Upload, ArrowUpDown, Clock, Users, UserPlus, MessageSquareText, Download
+  FileText, Printer, QrCode, ArrowLeft, Upload, ArrowUpDown, Clock, Users, UserPlus, MessageSquareText, Download, Calculator
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -295,8 +295,24 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const [qrVisitorName, setQrVisitorName] = useState("");
   const [qrVisitorSubmitting, setQrVisitorSubmitting] = useState(false);
 
+  // States สำหรับระบบคำนวณเบิกยา (1 สัปดาห์ / 2 สัปดาห์)
+  const [isCalcModalOpen, setIsCalcModalOpen] = useState(false);
+  const [calcStartDate, setCalcStartDate] = useState("");
+  const [calcEndDate, setCalcEndDate] = useState("");
+  const [calcCategory, setCalcCategory] = useState<number | "all">("all");
+  const [calcData, setCalcData] = useState<any[]>([]);
+
   useEffect(() => {
     setBaseUrl(typeof window !== 'undefined' ? window.location.origin : '');
+    
+    // ตั้งค่าเริ่มต้นวันที่คำนวณ: 3 เดือนย้อนหลัง ถึง วันนี้
+    const today = new Date();
+    const endStr = today.toISOString().split('T')[0];
+    const start = new Date();
+    start.setMonth(start.getMonth() - 3);
+    const startStr = start.toISOString().split('T')[0];
+    setCalcStartDate(startStr);
+    setCalcEndDate(endStr);
   }, []);
 
   const fetchMedicines = async () => { 
@@ -310,7 +326,8 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
            const params = new URLSearchParams(window.location.search);
            const scanId = params.get('id') || params.get('scan') || params.get('med');
            if (scanId) {
-              const targetMed = data.find((m: any) => String(m.id) === String(scanId));
+              // แก้ไข: รองรับสแกน QR Code เก่าที่ใช้รหัส HOSXP หรือ ID
+              const targetMed = data.find((m: any) => String(m.id) === String(scanId) || String(m.hosxp_icode) === String(scanId));
               if (targetMed) {
                  openHistoryModal(targetMed);
               }
@@ -553,6 +570,55 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       }
       alert(`นำเข้าสำเร็จ ${count} รายการ!`); setIsImportModalOpen(false); setImportText(""); fetchMedicines();
     } catch (e: any) { alert("นำเข้าไม่สำเร็จ: " + e.message); } finally { setImporting(false); }
+  };
+
+  // ฟังก์ชันคำนวณเบิกยา (1wk / 2wk)
+  const handleCalculateDispense = () => {
+    if (!calcStartDate || !calcEndDate) return alert("กรุณาเลือกวันที่ให้ครบ");
+    const start = new Date(calcStartDate);
+    start.setHours(0,0,0,0);
+    const end = new Date(calcEndDate);
+    end.setHours(23,59,59,999);
+
+    const daysDiff = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+
+    const results = medicines
+      .filter(m => calcCategory === "all" || String(m.cabinet_category) === String(calcCategory))
+      .map(med => {
+          const txs = allTransactions.filter(tx =>
+              tx.medicine_id.toString() === med.id.toString() &&
+              tx.action === 'out' &&
+              new Date(tx.created_at) >= start &&
+              new Date(tx.created_at) <= end
+          );
+
+          const totalOut = txs.reduce((sum, tx) => sum + tx.amount, 0);
+          const avgPerDay = totalOut / daysDiff;
+
+          const oneWk = Math.ceil(avgPerDay * 7);
+          const twoWk = Math.ceil(avgPerDay * 14);
+
+          let currentStock = 0;
+          let packSize = 1;
+          let unitName = "'s";
+          if (med.medicine_lots && med.medicine_lots.length > 0) {
+             currentStock = med.medicine_lots.reduce((sum: number, l: any) => sum + l.current_stock, 0);
+             packSize = med.medicine_lots[0].pack_size;
+             unitName = med.medicine_lots[0].unit_name;
+          }
+
+          return {
+              ...med,
+              totalOut,
+              currentStock,
+              oneWk,
+              twoWk,
+              packSize,
+              unitName
+          };
+      });
+
+    setCalcData(results.sort((a,b) => b.totalOut - a.totalOut));
   };
 
   const filteredMedicines = medicines
@@ -972,6 +1038,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
               <>
                 <button onClick={() => setIsVisitorMainModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><MessageSquareText size={16} /> โน้ตผู้มาเยือน</button>
                 <button onClick={() => setIsExpDashboardOpen(true)} className="flex items-center justify-center gap-1.5 bg-rose-50/80 text-rose-700 border border-rose-200/50 hover:bg-rose-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><CalendarDays size={16} /> เช็คยาใกล้ EXP</button>
+                <button onClick={() => setIsCalcModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-cyan-50/80 text-cyan-700 border border-cyan-200/50 hover:bg-cyan-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Calculator size={16} /> คำนวณเบิกยา</button>
                 <button onClick={() => setIsQRModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-indigo-50/80 text-indigo-700 border border-indigo-200/50 hover:bg-indigo-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><QrCode size={16} /> พิมพ์ QR</button>
                 <button onClick={() => setIsReportModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-blue-50/80 text-blue-700 border border-blue-200/50 hover:bg-blue-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><FileText size={16} /> พิมพ์รายงาน</button>
                 <button onClick={() => setIsImportModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Upload size={16} /> นำเข้า</button>
@@ -1110,6 +1177,71 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
 
         {/* MODAL SECTION */}
         
+        {/* Modal: คำนวณเบิกยา 1wk / 2wk */}
+        {isCalcModalOpen && session && (
+          <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[80]">
+            <div className="bg-white/95 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-4xl p-6 relative flex flex-col h-full max-h-[90vh]">
+                <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                  <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Calculator className="text-cyan-600" size={22}/> คำนวณยอดเบิกยา (1 สัปดาห์ / 2 สัปดาห์)</h2>
+                  <button onClick={() => setIsCalcModalOpen(false)} className="p-1 hover:bg-slate-100 rounded-xl"><X size={20} className="text-slate-400"/></button>
+                </div>
+
+                <div className="flex flex-wrap gap-4 py-4 border-b border-slate-100 shrink-0 bg-slate-50 p-4 rounded-2xl mt-4">
+                  <div>
+                     <label className="block text-xs font-bold text-slate-600 mb-1">เลือกตู้ยา</label>
+                     <select className="bg-white border border-slate-200 rounded-xl p-2.5 text-sm outline-none shadow-sm" value={calcCategory} onChange={(e) => setCalcCategory(e.target.value === "all" ? "all" : Number(e.target.value))}>
+                        <option value="all">-- ทุกตู้ยา --</option>
+                        {categoriesList?.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                     </select>
+                  </div>
+                  <div>
+                     <label className="block text-xs font-bold text-slate-600 mb-1">ตั้งแต่ (เริ่มต้นที่ 3 เดือนย้อนหลัง)</label>
+                     <input type="date" className="bg-white border border-slate-200 rounded-xl p-2.5 text-sm outline-none shadow-sm" value={calcStartDate} onChange={(e) => setCalcStartDate(e.target.value)} />
+                  </div>
+                  <div>
+                     <label className="block text-xs font-bold text-slate-600 mb-1">ถึงวันที่</label>
+                     <input type="date" className="bg-white border border-slate-200 rounded-xl p-2.5 text-sm outline-none shadow-sm" value={calcEndDate} onChange={(e) => setCalcEndDate(e.target.value)} />
+                  </div>
+                  <div className="flex items-end">
+                     <button onClick={handleCalculateDispense} className="bg-cyan-500 hover:bg-cyan-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md transition-colors flex items-center gap-1.5"><Calculator size={16}/> คำนวณยอด</button>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto mt-4 pr-2">
+                  {calcData.length === 0 ? (
+                     <div className="text-center py-12 text-slate-400 font-medium">กดปุ่ม "คำนวณยอด" เพื่อแสดงข้อมูล</div>
+                  ) : (
+                     <table className="w-full text-sm text-left border-collapse">
+                        <thead>
+                           <tr className="bg-slate-100 text-slate-600">
+                              <th className="p-3 rounded-tl-xl font-bold">ชื่อยา</th>
+                              <th className="p-3 text-center font-bold">ยอดใช้ไปในรอบนี้</th>
+                              <th className="p-3 text-center font-bold">คงเหลือปัจจุบัน</th>
+                              <th className="p-3 text-center font-bold text-blue-600">แนะนำเบิก (1 wk)</th>
+                              <th className="p-3 text-center font-bold text-purple-600 rounded-tr-xl">แนะนำเบิก (2 wk)</th>
+                           </tr>
+                        </thead>
+                        <tbody>
+                           {calcData.map((row, idx) => (
+                              <tr key={row.id} className="border-b border-slate-100 hover:bg-slate-50">
+                                 <td className="p-3">
+                                   <div className="font-bold text-slate-800">{row.name}</div>
+                                   <div className="text-xs text-slate-500">{row.hosxp_icode || "-"}</div>
+                                 </td>
+                                 <td className="p-3 text-center font-medium text-slate-600">{formatBoxString(row.totalOut, row.packSize, row.unitName)}</td>
+                                 <td className="p-3 text-center font-bold text-emerald-600">{formatBoxString(row.currentStock, row.packSize, row.unitName)}</td>
+                                 <td className="p-3 text-center font-extrabold text-blue-600">{formatBoxString(row.oneWk, row.packSize, row.unitName)}</td>
+                                 <td className="p-3 text-center font-extrabold text-purple-600">{formatBoxString(row.twoWk, row.packSize, row.unitName)}</td>
+                              </tr>
+                           ))}
+                        </tbody>
+                     </table>
+                  )}
+                </div>
+            </div>
+          </div>
+        )}
+
         {/* Modal: แจ้งเตือนยาใกล้ EXP */}
         {isExpDashboardOpen && session && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[80]">
