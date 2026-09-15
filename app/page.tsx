@@ -295,17 +295,26 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const [qrVisitorName, setQrVisitorName] = useState("");
   const [qrVisitorSubmitting, setQrVisitorSubmitting] = useState(false);
 
-  // States สำหรับระบบคำนวณเบิกยา (1 สัปดาห์ / 2 สัปดาห์)
+  // States สำหรับระบบคำนวณเบิกยา (Modal)
   const [isCalcModalOpen, setIsCalcModalOpen] = useState(false);
   const [calcStartDate, setCalcStartDate] = useState("");
   const [calcEndDate, setCalcEndDate] = useState("");
   const [calcCategory, setCalcCategory] = useState<number | "all">("all");
   const [calcData, setCalcData] = useState<any[]>([]);
 
+  // States สำหรับตั้งค่าช่วงวันที่คำนวณบนการ์ดยา (ค่าเริ่มต้น 3 เดือนย้อนหลัง)
+  const [cardCalcStartDate, setCardCalcStartDate] = useState(() => {
+    const start = new Date();
+    start.setMonth(start.getMonth() - 3);
+    return start.toISOString().split('T')[0];
+  });
+  const [cardCalcEndDate, setCardCalcEndDate] = useState(() => {
+    return new Date().toISOString().split('T')[0];
+  });
+
   useEffect(() => {
     setBaseUrl(typeof window !== 'undefined' ? window.location.origin : '');
     
-    // ตั้งค่าเริ่มต้นวันที่คำนวณ: 3 เดือนย้อนหลัง ถึง วันนี้
     const today = new Date();
     const endStr = today.toISOString().split('T')[0];
     const start = new Date();
@@ -326,7 +335,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
            const params = new URLSearchParams(window.location.search);
            const scanId = params.get('id') || params.get('scan') || params.get('med');
            if (scanId) {
-              // แก้ไข: รองรับสแกน QR Code เก่าที่ใช้รหัส HOSXP หรือ ID
               const targetMed = data.find((m: any) => String(m.id) === String(scanId) || String(m.hosxp_icode) === String(scanId));
               if (targetMed) {
                  openHistoryModal(targetMed);
@@ -384,7 +392,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     }
   }, []);
 
-  // Validation ป้องกันกรณีตู้ถูกลบไปแล้วแต่ใน localStorage ยังจำไว้อยู่
   useEffect(() => {
     if (categoriesList.length > 0 && selectedCategory !== "all") {
       const isCategoryExists = categoriesList.some(cat => String(cat.id) === String(selectedCategory));
@@ -529,8 +536,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       totalItems = Math.round(packs * lot.pack_size);
     }
     
-    // เอาการ Validation เช็คสต็อกออกไป เพื่อให้ Visitor บันทึกแจ้งจำนวนที่เบิกจริงได้เสมอ แม้ในระบบสต็อกจะหมดก็ตาม
-    
     setQrVisitorSubmitting(true);
     try {
       await supabase.from("stock_transactions").insert([{
@@ -572,7 +577,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     } catch (e: any) { alert("นำเข้าไม่สำเร็จ: " + e.message); } finally { setImporting(false); }
   };
 
-  // ฟังก์ชันคำนวณเบิกยา (1wk / 2wk)
   const handleCalculateDispense = () => {
     if (!calcStartDate || !calcEndDate) return alert("กรุณาเลือกวันที่ให้ครบ");
     const start = new Date(calcStartDate);
@@ -689,7 +693,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       totalItems = Math.round(packs * size); 
     }
     
-    // ดักวันที่กรณีรับเข้าล่วงหน้า
     if (stockAction === 'in' && isPendingStock && !expectedDate) {
        setIsSubmitting(false);
        return alert("กรุณาระบุวันที่คาดว่าจะเข้า (สำหรับรายการรับเข้าล่วงหน้า)");
@@ -745,18 +748,14 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       };
       
       if (txDate) {
-         // ดึงเวลาปัจจุบัน (ชั่วโมง นาที วินาที) ของเครื่องผู้ใช้งานมาใช้ร่วมกับวันที่เลือก
          const now = new Date();
          const hours = String(now.getHours()).padStart(2, '0');
          const minutes = String(now.getMinutes()).padStart(2, '0');
          const seconds = String(now.getSeconds()).padStart(2, '0');
-         
-         // ส่งค่าแบบ ISO String ที่ถูกต้องตาม Timezone ท้องถิ่น
          txPayload.created_at = `${txDate}T${hours}:${minutes}:${seconds}+07:00`;
       }
       if (pending) txPayload.expected_date = expectedDate || null;
       
-      // อัปเดตการดักจับข้อผิดพลาดการ Insert Transaction เพื่อไม่ให้เงียบหาย
       const { error: txError } = await supabase.from("stock_transactions").insert([txPayload]);
       if (txError) {
          console.error("Transaction Error:", txError);
@@ -770,7 +769,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         if (freshMed) { 
           setHistoryMed(freshMed); 
           const { data: txs } = await supabase.from("stock_transactions").select("*").eq("medicine_id", String(historyMed.id)).order("created_at", { ascending: false }); 
-          // กรอง Visitor notes ออกจากประวัติรายการล่าสุดแบบเด็ดขาด
           setHistoryRows((txs || []).filter((r: any) => r.status !== 'visitor_note' && r.status !== 'visitor_acknowledged')); 
         }
       }
@@ -780,21 +778,17 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const handleConfirmPendingStock = async (row: any) => {
     if (!confirm(`ยืนยันว่าได้รับยาจำนวน ${row.amount} แล้ว และต้องการเพิ่มเข้าสต็อกใช่หรือไม่?`)) return;
     try {
-      // ดึงสต็อกปัจจุบันของล็อตนั้นก่อน
       const { data: lotData, error: lotErr } = await supabase.from("medicine_lots").select("current_stock").eq("id", row.lot_id).single();
       if (lotErr) throw lotErr;
 
-      // บวกสต็อกเพิ่ม
       const { error: updateLotErr } = await supabase.from("medicine_lots").update({ current_stock: lotData.current_stock + row.amount }).eq("id", row.lot_id);
       if (updateLotErr) throw updateLotErr;
 
-      // เปลี่ยนสถานะ transaction เป็น completed
       const { error: txErr } = await supabase.from("stock_transactions").update({ status: 'completed' }).eq("id", row.id);
       if (txErr) throw txErr;
 
       alert("อัปเดตสต็อกเรียบร้อยแล้ว!");
       
-      // รีเฟรชข้อมูล
       await fetchMedicines();
       const { data: freshMed } = await supabase.from("medicines").select(`*, medicine_lots (*)`).eq("id", historyMed.id).single(); 
       if (freshMed) { 
@@ -839,7 +833,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     try { 
       const { data, error } = await supabase.from("stock_transactions").select("*").eq("medicine_id", String(med.id)).order("created_at", { ascending: false }); 
       if (error) throw error; 
-      // กรองโน้ตผู้มาเยือนออก เพื่อไม่ให้แสดงซ้ำในประวัติการทำรายการ (โชว์เฉพาะรายการตัดจ่าย/รับเข้าของระบบเท่านั้น)
       setHistoryRows((data || []).filter((r: any) => r.status !== 'visitor_note' && r.status !== 'visitor_acknowledged')); 
     } catch (error) { setHistoryRows([]); } 
   };
@@ -1056,7 +1049,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           </div>
         </div>
 
-        {/* แจ้งเตือนผู้มาเยือน (เฉพาะเมื่อ Login) */}
+        {/* แจ้งเตือนผู้มาเยือน */}
         {session && (visitorNotes.length > 0) && (
           <div className="bg-amber-50/80 backdrop-blur-xl rounded-3xl shadow-sm border border-amber-200/50 p-4 md:p-5 w-full transition-all">
              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3 border-b border-amber-200/50 pb-3">
@@ -1103,7 +1096,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           </div>
         )}
 
-        {/* หมวดหมู่ */}
+        {/* หมวดหมู่และการค้นหา พร้อมช่องกำหนดช่วงเวลาคำนวณเรทเบิกการ์ด */}
         <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/80 p-4 md:p-5 w-full">
           <div className="flex flex-wrap gap-2.5 mb-4">
             <button onClick={() => handleSelectCategory("all")} className={`px-4 py-2 rounded-2xl text-sm font-bold border transition-all ${selectedCategory === "all" ? "bg-slate-800 text-white shadow-md" : "bg-white/60 text-slate-600 hover:bg-white/90"}`}>ทั้งหมด</button>
@@ -1121,6 +1114,26 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
             <div className="relative flex-1 w-full"><Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" /><input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="ค้นหาชื่อยา..." className="w-full bg-white/50 border border-white rounded-2xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:ring-blue-400 text-slate-700" /></div>
             <select className="w-full md:w-auto bg-white/50 rounded-2xl px-4 py-3 text-sm" value={sortOrder} onChange={(e) => setSortOrder(e.target.value as 'recent'|'alpha')}><option value="alpha">เรียง (ก-ฮ)</option><option value="recent">แก้ไขล่าสุด</option></select>
           </div>
+
+          {/* แผงกำหนดช่วงเวลาคำนวณเรทเบิกยาบนการ์ด (ค่าเริ่มต้น 3 เดือนย้อนหลัง) */}
+          {session && (
+            <div className="flex flex-wrap items-center gap-2 bg-white/50 p-3 rounded-2xl border border-white/60 text-xs mt-3">
+              <span className="font-bold text-slate-700 flex items-center gap-1"><Clock size={14}/> ช่วงเวลาคำนวณเรทเบิกหน้าการ์ด:</span>
+              <input 
+                type="date" 
+                value={cardCalcStartDate} 
+                onChange={(e) => setCardCalcStartDate(e.target.value)} 
+                className="bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 outline-none font-medium"
+              />
+              <span className="text-slate-400">ถึง</span>
+              <input 
+                type="date" 
+                value={cardCalcEndDate} 
+                onChange={(e) => setCardCalcEndDate(e.target.value)} 
+                className="bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 outline-none font-medium"
+              />
+            </div>
+          )}
         </div>
 
         {/* รายการยา */}
@@ -1129,6 +1142,27 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
             {filteredMedicines.map((med) => {
               const activeLots = (med.medicine_lots || []).filter((l: any) => l.current_stock > 0).sort((a: any, b: any) => new Date(a.exp_date).getTime() - new Date(b.exp_date).getTime());
               const isAvail = med.is_available !== false;
+
+              // คำนวณเรทเบิก 1wk / 2wk อัตโนมัติจากช่วงวันที่ตั้งไว้บนการ์ด
+              const startDt = new Date(cardCalcStartDate);
+              startDt.setHours(0,0,0,0);
+              const endDt = new Date(cardCalcEndDate);
+              endDt.setHours(23,59,59,999);
+              const daysDiff = Math.max(1, Math.ceil((endDt.getTime() - startDt.getTime()) / (1000 * 60 * 60 * 24)));
+
+              const medTxs = allTransactions.filter((tx: any) => 
+                tx.medicine_id.toString() === med.id.toString() &&
+                tx.action === 'out' &&
+                new Date(tx.created_at) >= startDt &&
+                new Date(tx.created_at) <= endDt
+              );
+              const totalOutPeriod = medTxs.reduce((sum: number, tx: any) => sum + tx.amount, 0);
+              const avgPerDay = totalOutPeriod / daysDiff;
+              const suggest1Wk = Math.ceil(avgPerDay * 7);
+              const suggest2Wk = Math.ceil(avgPerDay * 14);
+              const samplePackSize = med.medicine_lots?.[0]?.pack_size || 1;
+              const sampleUnitName = med.medicine_lots?.[0]?.unit_name || "'s";
+
               return (
                 <div key={med.id} className={`bg-white/70 backdrop-blur-xl rounded-3xl shadow-sm border p-5 flex flex-col gap-3.5 transition-all ${!isAvail ? 'border-red-300/80 bg-red-50/70' : 'border-white/80 hover:shadow-md'}`}>
                   <div className="flex justify-between items-start border-b border-white/50 pb-3">
@@ -1163,6 +1197,24 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                        </div>
                      )}
                   </div>
+
+                  {/* แสดงเรทเบิกแนะนำ 1 wk และ 2 wk บนการ์ดอัตโนมัติ */}
+                  {session && (
+                    <div className="bg-cyan-50/60 border border-cyan-100 rounded-2xl p-2.5 text-xs space-y-1">
+                      <div className="text-[10px] font-bold text-cyan-800">
+                        📊 แนะนำเบิก (อัตโนมัติ):
+                      </div>
+                      <div className="flex justify-between text-slate-700 font-medium">
+                        <span>1 สัปดาห์ (7 วัน):</span>
+                        <span className="font-bold text-blue-600">{formatBoxString(suggest1Wk, samplePackSize, sampleUnitName)}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-700 font-medium">
+                        <span>2 สัปดาห์ (14 วัน):</span>
+                        <span className="font-bold text-purple-600">{formatBoxString(suggest2Wk, samplePackSize, sampleUnitName)}</span>
+                      </div>
+                    </div>
+                  )}
+
                   {session && (
                     <div className="grid grid-cols-2 gap-2 mt-auto pt-2">
                         <button onClick={() => openStockModal(med, 'in')} className="flex justify-center gap-1.5 p-2.5 bg-emerald-50/80 text-emerald-700 rounded-xl border border-emerald-100/50 font-bold text-xs shadow-sm hover:bg-emerald-100"><PackagePlus size={16} /> รับเข้า</button>
@@ -1548,14 +1600,12 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
             
             <div className="p-4 md:p-6 max-w-3xl mx-auto w-full space-y-4 pb-20">
               
-              {/* ชื่อยาและหัวข้อ */}
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 text-center">
                  <h1 className="text-2xl font-extrabold text-slate-800">{historyMed.name}</h1>
                  <p className="text-xs text-slate-500 mt-1">รหัส HosXP: <span className="font-bold">{historyMed.hosxp_icode || "-"}</span> | ตู้: <span className="font-bold">{getCategoryName(historyMed.cabinet_category)}</span></p>
                  {historyMed.note && <div className="text-xs font-medium text-amber-700 mt-2 bg-amber-50 border border-amber-100 px-3 py-1.5 rounded-xl inline-block">หมายเหตุ: {historyMed.note}</div>}
               </div>
 
-              {/* ส่วนแสดงสต็อกคงเหลือแบ่งตาม EXP */}
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                 <div className="flex items-center gap-2 font-bold text-slate-700 mb-3 text-sm"><CalendarDays size={18} className="text-slate-500"/> สต็อกคงเหลือแบ่งตาม EXP</div>
                 
@@ -1584,7 +1634,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                 )}
               </div>
 
-              {/* เงื่อนไขแสดงปุ่มรับเข้า/ตัดจ่าย (เฉพาะผู้ที่ Login) หรือ ฟอร์มโน้ตผู้มาเยือน (สำหรับคนสแกน QR) */}
               {session ? (
                 <div className="grid grid-cols-2 gap-3">
                    <button onClick={() => openStockModal(historyMed, 'in')} className="flex items-center justify-center gap-2 py-4 bg-emerald-50/80 text-emerald-700 border border-emerald-200/60 rounded-3xl font-bold shadow-sm hover:bg-emerald-100 transition-all"><PackagePlus size={20}/> รับเข้าสต็อก</button>
@@ -1625,7 +1674,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                 </div>
               )}
 
-              {/* โน้ตผู้มาเยือนสำหรับยานี้ (เอาไว้แจ้งเตือน และมีปุ่มรับทราบเหมือนหน้าหลัก) */}
               <div className="bg-amber-50/70 border border-amber-200/60 rounded-3xl p-5 shadow-sm mt-4">
                  <h3 className="text-sm font-bold text-amber-800 mb-3 flex items-center gap-2"><MessageSquareText size={18}/> โน้ตผู้มาเยือนสำหรับยานี้ (รอตรวจสอบ)</h3>
                  {visitorNotes.filter(n => n.medicine_id?.toString() === historyMed.id?.toString() && n.status === 'visitor_note').length === 0 ? (
@@ -1651,7 +1699,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                  )}
               </div>
 
-              {/* ประวัติการทำรายการล่าสุด */}
               <div className="space-y-3 pt-2">
                 <h3 className="font-bold flex items-center gap-2 text-slate-700 text-sm px-1"><History size={18} /> ประวัติการทำรายการล่าสุด</h3>
                 {historyRows.length === 0 ? (
