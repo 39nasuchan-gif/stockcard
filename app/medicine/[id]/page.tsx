@@ -34,14 +34,19 @@ export default function VisitorMedicinePage({ params }: { params: { id: string }
 
   const fetchMedicine = async () => {
     try {
+      // 1. ดักจับ Error ถ้า QR Code เสีย (เป็นคำว่า undefined หรือไม่ใช่ตัวเลข)
+      if (!id || id === "undefined" || isNaN(Number(id))) {
+        throw new Error("QR Code นี้ไม่สมบูรณ์ หรือไม่มีรหัสยา (กรุณาพิมพ์ QR Code ใบใหม่)");
+      }
+
       const { data, error } = await supabase
         .from("medicines")
         .select(`*, medicine_lots (*)`)
-        .eq("id", id)
+        .eq("id", Number(id)) // แปลงเป็นตัวเลขให้ปลอดภัย
         .single();
         
       if (error) throw error;
-      if (!data) throw new Error("ไม่พบข้อมูลยาในระบบ");
+      if (!data) throw new Error("ไม่พบข้อมูลยาในระบบ (อาจถูกลบไปแล้ว)");
       
       setMed(data);
       
