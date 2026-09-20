@@ -1133,74 +1133,53 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
             <div className="relative flex-1 w-full"><Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" /><input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="ค้นหาชื่อยา..." className="w-full bg-white/50 border border-white rounded-2xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:ring-blue-400 text-slate-700" /></div>
             <select className="w-full md:w-auto bg-white/50 rounded-2xl px-4 py-3 text-sm" value={sortOrder} onChange={(e) => setSortOrder(e.target.value as 'recent'|'alpha')}><option value="alpha">เรียง (ก-ฮ)</option><option value="recent">แก้ไขล่าสุด</option></select>
           </div>
-
-          {/* แผงกำหนดช่วงเวลาคำนวณเรทเบิกยาบนการ์ด (ค่าเริ่มต้น 3 เดือนย้อนหลัง) */}
-          {session && (
-            <div className="flex flex-wrap items-center gap-2 bg-white/50 p-3 rounded-2xl border border-white/60 text-xs mt-3">
-              <span className="font-bold text-slate-700 flex items-center gap-1"><Clock size={14}/> ช่วงเวลาคำนวณเรทเบิกหน้าการ์ด:</span>
-              <input 
-                type="date" 
-                value={cardCalcStartDate} 
-                onChange={(e) => setCardCalcStartDate(e.target.value)} 
-                className="bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 outline-none font-medium"
-              />
-              <span className="text-slate-400">ถึง</span>
-              <input 
-                type="date" 
-                value={cardCalcEndDate} 
-                onChange={(e) => setCardCalcEndDate(e.target.value)} 
-                className="bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 outline-none font-medium"
-              />
-            </div>
-          )}
         </div>
 
         {/* รายการยา */}
         {loading ? (<div className="p-10 text-center text-slate-400 bg-white/60 backdrop-blur-xl rounded-3xl">กำลังโหลด...</div>) : filteredMedicines.length === 0 ? (<div className="p-10 text-center text-slate-400 bg-white/60 backdrop-blur-xl rounded-3xl">ไม่พบรายการ</div>) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5">
-            {filteredMedicines.map((med) => {
-              const activeLots = (med.medicine_lots || []).filter((l: any) => l.current_stock > 0).sort((a: any, b: any) => new Date(a.exp_date).getTime() - new Date(b.exp_date).getTime());
-              const isAvail = med.is_available !== false;
-
-              // คำนวณเรทเบิก 1wk / 2wk + เผื่อคาดเคลื่อน 15% (Buffer 15%)
-              const startDt = new Date(cardCalcStartDate);
-              startDt.setHours(0,0,0,0);
-              const endDt = new Date(cardCalcEndDate);
+            
+            // [แบบใหม่] นับยอดตัดจ่ายจริง 7 วัน และ 14 วันย้อนหลังแบบตรงไปตรงมา
+              const now = new Date();
+              const endDt = new Date(now);
               endDt.setHours(23,59,59,999);
 
-              // [แก้ใหม่] หาประวัติการทำรายการทั้งหมดของยาตัวนี้
-              const medAllTxs = allTransactions.filter((tx: any) => tx.medicine_id.toString() === med.id.toString());
+              const start7Dt = new Date(now);
+              start7Dt.setDate(now.getDate() - 7);
+              start7Dt.setHours(0,0,0,0);
+
+              const start14Dt = new Date(now);
+              start14Dt.setDate(now.getDate() - 14);
+              start14Dt.setHours(0,0,0,0);
+
+              // ดึงประวัติการ "ตัดจ่าย" (out) ของยาตัวนี้
+              const medOutTxs = allTransactions.filter((tx: any) => tx.medicine_id.toString() === med.id.toString() && tx.action === 'out');
+
+              // 1. ยอดตัดจ่ายรวมในรอบ 7 วันที่ผ่านมา
+              const txs1Wk = medOutTxs.filter((tx: any) => new Date(tx.created_at) >= start7Dt && new Date(tx.created_at) <= endDt);
+              const sum1Wk = txs1Wk.reduce((sum: number, tx: any) => sum + tx.amount, 0);
+
+              // 2. ยอดตัดจ่ายรวมในรอบ 14 วันที่ผ่านมา
+              const txs2Wk = medOutTxs.filter((tx: any) => new Date(tx.created_at) >= start14Dt && new Date(tx.created_at) <= endDt);
+              const sum2Wk = txs2Wk.reduce((sum: number, tx: any) => sum + tx.amount, 0);
+
+              // ----------------------------------------------------
+              // แนะนำเบิก = ยอดใช้จริงในรอบนั้นๆ + เผื่อคาดเคลื่อน 15%
+              // ----------------------------------------------------
+              const suggest1Wk = Math.ceil(sum1Wk * 1.15);
+              const suggest2Wk = Math.ceil(sum2Wk * 1.15);
+
+              // ----------------------------------------------------
+              // คำนวณ Safety Stock (สำรอง 3 วัน), Min Stock และ Max Level
+              // ----------------------------------------------------
+              const avgPerDay1Wk = sum1Wk / 7; // หาเฉลี่ยต่อวันจากยอด 7 วันล่าสุด
+              const safetyStock = Math.ceil(avgPerDay1Wk * 3); 
               
-              // กำหนดวันเริ่มต้นจริง (ถ้าเพิ่งรับยาเข้ามาใหม่ ให้ใช้วันที่รับแรกสุดแทน)
-              let actualStartDt = startDt;
-              if (medAllTxs.length > 0) {
-                const earliestTx = medAllTxs.reduce((earliest, current) => {
-                  return new Date(current.created_at).getTime() < new Date(earliest.created_at).getTime() ? current : earliest;
-                });
-                const earliestDate = new Date(earliestTx.created_at);
-                earliestDate.setHours(0,0,0,0);
-                
-                // ถ้ายานี้เพิ่งถูกเพิ่มเข้ามา"หลัง"วันที่กำหนดในช่องค้นหา ให้เริ่มนับจากวันแรกที่มีประวัติ
-                if (earliestDate.getTime() > startDt.getTime()) {
-                  actualStartDt = earliestDate;
-                }
-              }
-
-              // คำนวณจำนวนวันตามความจริง (หารด้วยจำนวนวันที่มีของในคลังจริงๆ)
-              const daysDiff = Math.max(1, Math.ceil((endDt.getTime() - actualStartDt.getTime()) / (1000 * 60 * 60 * 24)));
-
-              const medTxs = medAllTxs.filter((tx: any) => 
-                tx.action === 'out' &&
-                new Date(tx.created_at) >= actualStartDt &&
-                new Date(tx.created_at) <= endDt
-              );
-              const totalOutPeriod = medTxs.reduce((sum: number, tx: any) => sum + tx.amount, 0);
-              const avgPerDay = totalOutPeriod / daysDiff;
-
-              // คำนวณ Safety Stock, Min Stock และ Max Level
-              const safetyStock = Math.ceil(avgPerDay * 3); // สำรองฉุกเฉิน 3 วัน
-              const configuredMinStock = med.min_stock > 0 ? med.min_stock : Math.ceil(avgPerDay * 7 * 1.15); // ถ้าไม่ได้ตั้งค่า ใช้เรท 7 วัน + 15% เป็น Min
-              const maxLevel = configuredMinStock + suggest2Wk; // Max Level = Min + เรท 2 สัปดาห์
+              // ถ้าไม่ได้ตั้งค่า Min Stock ไว้ ให้ใช้ยอดแนะนำเบิก 1wk เป็นจุดสั่งซื้อ
+              const configuredMinStock = med.min_stock > 0 ? med.min_stock : suggest1Wk; 
+              
+              // Max Level (สต็อกสูงสุด) = จุดสั่งซื้อ + เรทเบิก 2 สัปดาห์
+              const maxLevel = configuredMinStock + suggest2Wk; 
 
               const samplePackSize = med.medicine_lots?.[0]?.pack_size || 1;
               const sampleUnitName = med.medicine_lots?.[0]?.unit_name || "'s";
