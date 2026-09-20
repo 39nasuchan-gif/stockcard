@@ -1129,58 +1129,28 @@ const { data: txData } = await supabase.from("stock_transactions").select("*").i
               const activeLots = (med.medicine_lots || []).filter((l: any) => l.current_stock > 0).sort((a: any, b: any) => new Date(a.exp_date).getTime() - new Date(b.exp_date).getTime());
               const isAvail = med.is_available !== false;
 
- // [แก้ใหม่รองรับวันที่ไทย พ.ศ. 20/09/2569] ฟังก์ชันแปลงวันที่ให้เป็นสากล
- const parseCustomDate = (dateStr: string) => {
-  if (!dateStr) return new Date(0);
-  // ถ้าเป็น ISO string มาตรฐาน (เช่น 2026-09-20T...)
-  if (dateStr.includes('-') && dateStr.indexOf('-') === 4) {
-    return new Date(dateStr);
-  }
-  // ถ้าเป็นรูปแบบ 20/09/2569 หรือ 20/09/69
-  const parts = dateStr.split(/[\s/,-]+/);
-  if (parts.length >= 3) {
-    let d = parseInt(parts[0], 10);
-    let m = parseInt(parts[1], 10) - 1;
-    let y = parseInt(parts[2], 10);
-    if (y > 2400) y -= 543; // แปลง พ.ศ. เป็น ค.ศ.
-    else if (y < 100) y += 2000;
-    return new Date(y, m, d);
-  }
-  return new Date(dateStr);
-};
+ {/* รายการยา */}
+ {loading ? (<div className="p-10 text-center text-slate-400 bg-white/60 backdrop-blur-xl rounded-3xl">กำลังโหลด...</div>) : filteredMedicines.length === 0 ? (<div className="p-10 text-center text-slate-400 bg-white/60 backdrop-blur-xl rounded-3xl">ไม่พบรายการ</div>) : (
+  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5">
+    {filteredMedicines.map((med) => {
+      const activeLots = (med.medicine_lots || []).filter((l: any) => l.current_stock > 0).sort((a: any, b: any) => new Date(a.exp_date).getTime() - new Date(b.exp_date).getTime());
+      const isAvail = med.is_available !== false;
 
-const nowTime = new Date();
-nowTime.setHours(23,59,59,999);
+      // ดึงยอดตัดจ่ายทั้งหมดมารวมกันแบบตรงๆ
+      const medOutTxs = (allTransactions || []).filter((tx: any) => 
+        String(tx.medicine_id) === String(med.id) && 
+        String(tx.action).toLowerCase() === 'out'
+      );
+      
+      const sumTotal = medOutTxs.reduce((sum: number, tx: any) => sum + (Number(tx.amount) || 0), 0);
 
-const start7Time = new Date();
-start7Time.setDate(nowTime.getDate() - 7);
-start7Time.setHours(0,0,0,0);
-
-const start14Time = new Date();
-start14Time.setDate(nowTime.getDate() - 14);
-start14Time.setHours(0,0,0,0);
-
-const medOutTxs = allTransactions.filter((tx: any) => tx.medicine_id.toString() === med.id.toString() && tx.action === 'out');
-
-// [ดึงยอดตัดจ่ายทั้งหมดมารวมกันแบบตรงๆ ไม่จำกัดวัน]
-const medOutTxs = allTransactions.filter((tx: any) => 
-  String(tx.medicine_id) === String(med.id) && 
-  String(tx.action).toLowerCase() === 'out'
-);
-
-// รวมจำนวนที่ตัดจ่ายทั้งหมด
-const sumTotal = medOutTxs.reduce((sum: number, tx: any) => sum + (Number(tx.amount) || 0), 0);
-
-// คำนวณเรทแนะนำเบิกจากยอดจริงทั้งหมด + เผื่อ 15%
-const suggest1Wk = Math.ceil(sumTotal * 1.15);
-const suggest2Wk = Math.ceil((sumTotal * 2) * 1.15);
-
-// Safety Stock (สำรอง)
-const safetyStock = Math.ceil(sumTotal * 0.5); 
-
-const configuredMinStock = (med.min_stock !== null && med.min_stock !== undefined && med.min_stock > 0) ? med.min_stock : suggest1Wk; 
-const maxLevel = configuredMinStock + suggest2Wk;
-
+      const suggest1Wk = Math.ceil(sumTotal * 1.15);
+      const suggest2Wk = Math.ceil((sumTotal * 2) * 1.15);
+      const safetyStock = Math.ceil(sumTotal * 0.5); 
+      
+      const configuredMinStock = (med.min_stock !== null && med.min_stock !== undefined && med.min_stock > 0) ? med.min_stock : (suggest1Wk > 0 ? suggest1Wk : 10); 
+      const maxLevel = configuredMinStock + (suggest2Wk > 0 ? suggest2Wk : 20);
+      
               return (
                 <div key={med.id} className={`bg-white/70 backdrop-blur-xl rounded-3xl shadow-sm border p-5 flex flex-col gap-3.5 transition-all ${!isAvail ? 'border-red-300/80 bg-red-50/70' : 'border-white/80 hover:shadow-md'}`}>
                   <div className="flex justify-between items-start border-b border-white/50 pb-3">
