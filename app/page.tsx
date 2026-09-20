@@ -1128,45 +1128,63 @@ const { data: txData } = await supabase.from("stock_transactions").select("*").i
               const activeLots = (med.medicine_lots || []).filter((l: any) => l.current_stock > 0).sort((a: any, b: any) => new Date(a.exp_date).getTime() - new Date(b.exp_date).getTime());
               const isAvail = med.is_available !== false;
 
- // [ปรับปรุงใหม่] นับยอดตัดจ่ายจริง 7 วัน และ 14 วันย้อนหลังแบบเทียบแค่วันที่ (ไม่สนเวลา)
- const now = new Date();
- now.setHours(23,59,59,999);
+ // [แก้ใหม่รองรับวันที่ไทย พ.ศ. 20/09/2569] ฟังก์ชันแปลงวันที่ให้เป็นสากล
+ const parseCustomDate = (dateStr: string) => {
+  if (!dateStr) return new Date(0);
+  // ถ้าเป็น ISO string มาตรฐาน (เช่น 2026-09-20T...)
+  if (dateStr.includes('-') && dateStr.indexOf('-') === 4) {
+    return new Date(dateStr);
+  }
+  // ถ้าเป็นรูปแบบ 20/09/2569 หรือ 20/09/69
+  const parts = dateStr.split(/[\s/,-]+/);
+  if (parts.length >= 3) {
+    let d = parseInt(parts[0], 10);
+    let m = parseInt(parts[1], 10) - 1;
+    let y = parseInt(parts[2], 10);
+    if (y > 2400) y -= 543; // แปลง พ.ศ. เป็น ค.ศ.
+    else if (y < 100) y += 2000;
+    return new Date(y, m, d);
+  }
+  return new Date(dateStr);
+};
 
- const start7Dt = new Date();
- start7Dt.setDate(now.getDate() - 7);
- start7Dt.setHours(0,0,0,0);
+const nowTime = new Date();
+nowTime.setHours(23,59,59,999);
 
- const start14Dt = new Date();
- start14Dt.setDate(now.getDate() - 14);
- start14Dt.setHours(0,0,0,0);
+const start7Time = new Date();
+start7Time.setDate(nowTime.getDate() - 7);
+start7Time.setHours(0,0,0,0);
 
- const medOutTxs = allTransactions.filter((tx: any) => tx.medicine_id.toString() === med.id.toString() && tx.action === 'out');
+const start14Time = new Date();
+start14Time.setDate(nowTime.getDate() - 14);
+start14Time.setHours(0,0,0,0);
 
- // กรองเฉพาะรายการตัดจ่ายในช่วง 7 วัน / 14 วันที่ผ่านมา
- const txs1Wk = medOutTxs.filter((tx: any) => {
-   const txDate = new Date(tx.created_at);
-   return txDate >= start7Dt && txDate <= now;
- });
- const sum1Wk = txs1Wk.reduce((sum: number, tx: any) => sum + tx.amount, 0);
+const medOutTxs = allTransactions.filter((tx: any) => tx.medicine_id.toString() === med.id.toString() && tx.action === 'out');
 
- const txs2Wk = medOutTxs.filter((tx: any) => {
-   const txDate = new Date(tx.created_at);
-   return txDate >= start14Dt && txDate <= now;
- });
- const sum2Wk = txs2Wk.reduce((sum: number, tx: any) => sum + tx.amount, 0);
+// กรองเฉพาะรายการ 7 วัน และ 14 วันล่าสุด (ผ่านฟังก์ชันแปลงวันที่รองรับ พ.ศ.)
+const txs1Wk = medOutTxs.filter((tx: any) => {
+  const txDateOnly = parseCustomDate(tx.created_at);
+  return txDateOnly >= start7Time && txDateOnly <= nowTime;
+});
+const sum1Wk = txs1Wk.reduce((sum: number, tx: any) => sum + tx.amount, 0);
 
- // แนะนำเบิก = ยอดใช้จริง + เผื่อคาดเคลื่อน 15%
- const suggest1Wk = Math.ceil(sum1Wk * 1.15);
- const suggest2Wk = Math.ceil(sum2Wk * 1.15);
+const txs2Wk = medOutTxs.filter((tx: any) => {
+  const txDateOnly = parseCustomDate(tx.created_at);
+  return txDateOnly >= start14Time && txDateOnly <= nowTime;
+});
+const sum2Wk = txs2Wk.reduce((sum: number, tx: any) => sum + tx.amount, 0);
 
- // Safety Stock (สำรอง 3 วัน)
- const avgPerDay1Wk = sum1Wk / 7; 
- const safetyStock = Math.ceil(avgPerDay1Wk * 3); 
- 
- // Min Stock และ Max Level
- const configuredMinStock = (med.min_stock !== null && med.min_stock !== undefined && med.min_stock > 0) ? med.min_stock : suggest1Wk; 
- const maxLevel = configuredMinStock + suggest2Wk;
- 
+// แนะนำเบิก (+ เผื่อ 15%)
+const suggest1Wk = Math.ceil(sum1Wk * 1.15);
+const suggest2Wk = Math.ceil(sum2Wk * 1.15);
+
+// Safety Stock (สำรอง 3 วัน)
+const avgPerDay1Wk = sum1Wk / 7; 
+const safetyStock = Math.ceil(avgPerDay1Wk * 3); 
+
+const configuredMinStock = (med.min_stock !== null && med.min_stock !== undefined && med.min_stock > 0) ? med.min_stock : suggest1Wk; 
+const maxLevel = configuredMinStock + suggest2Wk;
+
               return (
                 <div key={med.id} className={`bg-white/70 backdrop-blur-xl rounded-3xl shadow-sm border p-5 flex flex-col gap-3.5 transition-all ${!isAvail ? 'border-red-300/80 bg-red-50/70' : 'border-white/80 hover:shadow-md'}`}>
                   <div className="flex justify-between items-start border-b border-white/50 pb-3">
