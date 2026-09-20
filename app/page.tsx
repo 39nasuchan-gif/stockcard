@@ -337,6 +337,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       // [เพิ่มตรงนี้] ดึงประวัติการทำรายการล่าสุด 500 รายการมาคำนวณเรทเบิก
 const { data: txData } = await supabase.from("stock_transactions").select("*").in("action", ["out","in"]).order('created_at', { ascending: false }).limit(500); 
       if (txData) setAllTransactions(txData); 
+      console.log("ประวัติธุรกรรมทั้งหมดที่ดึงมา:", txData); // <--- เพิ่มบรรทัดนี้เพื่อดูค่าใน Console
     } catch (error) { 
       console.error(error); 
     } finally { 
