@@ -319,25 +319,21 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     try { 
       const { data, error } = await supabase.from("medicines").select(`*, medicine_lots (*)`).order("id", { ascending: false }); 
       if (error) throw error; 
-      if (data) setMedicines(data);
-      
-      // ดึงประวัติธุรกรรมมาเก็บไว้คำนวณเรทเบิก
-      const { data: txData, error: txErr } = await supabase
-        .from("stock_transactions")
-        .select("*")
-        .order("created_at", { ascending: false });
+      if (data) {
+        setMedicines(data);
         
-      if (txErr) console.error("Error fetching transactions:", txErr);
-      if (txData) {
-        setAllTransactions(txData);
-        console.log("เช็คประวัติธุรกรรมที่โหลดมา:", txData);
+        if (typeof window !== 'undefined') {
+           const params = new URLSearchParams(window.location.search);
+           const scanId = params.get('id') || params.get('scan') || params.get('med');
+           if (scanId) {
+              const targetMed = data.find((m: any) => String(m.id) === String(scanId) || String(m.hosxp_icode) === String(scanId));
+              if (targetMed) {
+                 openHistoryModal(targetMed);
+              }
+              window.history.replaceState({}, document.title, window.location.pathname);
+           }
+        }
       }
-    } catch (error) { 
-      console.error(error); 
-    } finally { 
-      setLoading(false); 
-    } 
-  };
       // [เพิ่มตรงนี้] ดึงประวัติการทำรายการล่าสุด 500 รายการมาคำนวณเรทเบิก
 const { data: txData } = await supabase.from("stock_transactions").select("*").in("action", ["out","in"]).order('created_at', { ascending: false }).limit(500); 
       if (txData) setAllTransactions(txData); 
@@ -1166,17 +1162,20 @@ start14Time.setHours(0,0,0,0);
 
 const medOutTxs = allTransactions.filter((tx: any) => tx.medicine_id.toString() === med.id.toString() && tx.action === 'out');
 
-// [โค้ดตรวจสอบ] เช็คว่ามีประวัติในระบบกี่รายการ
+// [ดึงยอดตัดจ่ายทั้งหมดมารวมกันแบบตรงๆ ไม่จำกัดวัน]
 const medOutTxs = allTransactions.filter((tx: any) => 
   String(tx.medicine_id) === String(med.id) && 
   String(tx.action).toLowerCase() === 'out'
 );
 
-// ถ้าคำนวณแล้วยังเป็น 0 ให้ลองเอาบรรทัดนี้ไปแปะดูว่ามีข้อมูลไหม
+// รวมจำนวนที่ตัดจ่ายทั้งหมด
 const sumTotal = medOutTxs.reduce((sum: number, tx: any) => sum + (Number(tx.amount) || 0), 0);
 
+// คำนวณเรทแนะนำเบิกจากยอดจริงทั้งหมด + เผื่อ 15%
 const suggest1Wk = Math.ceil(sumTotal * 1.15);
-const suggest2Wk = Math.ceil(sumTotal * 1.15 * 2);
+const suggest2Wk = Math.ceil((sumTotal * 2) * 1.15);
+
+// Safety Stock (สำรอง)
 const safetyStock = Math.ceil(sumTotal * 0.5); 
 
 const configuredMinStock = (med.min_stock !== null && med.min_stock !== undefined && med.min_stock > 0) ? med.min_stock : suggest1Wk; 
