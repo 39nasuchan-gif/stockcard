@@ -1162,26 +1162,15 @@ start14Time.setHours(0,0,0,0);
 
 const medOutTxs = allTransactions.filter((tx: any) => tx.medicine_id.toString() === med.id.toString() && tx.action === 'out');
 
-// กรองเฉพาะรายการ 7 วัน และ 14 วันล่าสุด (ผ่านฟังก์ชันแปลงวันที่รองรับ พ.ศ.)
-const txs1Wk = medOutTxs.filter((tx: any) => {
-  const txDateOnly = parseCustomDate(tx.created_at);
-  return txDateOnly >= start7Time && txDateOnly <= nowTime;
-});
-const sum1Wk = txs1Wk.reduce((sum: number, tx: any) => sum + tx.amount, 0);
+// [เช็คด่วน] ดึงยอดตัดจ่ายทั้งหมดของยานี้มาโชว์ก่อน (ไม่จำกัด 7 วัน)
+const medOutTxs = allTransactions.filter((tx: any) => tx.medicine_id.toString() === med.id.toString() && tx.action === 'out');
+              
+// เอายอดตัดจ่ายทั้งหมดมารวมกันตรงๆ เลย
+const sumTotal = medOutTxs.reduce((sum: number, tx: any) => sum + tx.amount, 0);
 
-const txs2Wk = medOutTxs.filter((tx: any) => {
-  const txDateOnly = parseCustomDate(tx.created_at);
-  return txDateOnly >= start14Time && txDateOnly <= nowTime;
-});
-const sum2Wk = txs2Wk.reduce((sum: number, tx: any) => sum + tx.amount, 0);
-
-// แนะนำเบิก (+ เผื่อ 15%)
-const suggest1Wk = Math.ceil(sum1Wk * 1.15);
-const suggest2Wk = Math.ceil(sum2Wk * 1.15);
-
-// Safety Stock (สำรอง 3 วัน)
-const avgPerDay1Wk = sum1Wk / 7; 
-const safetyStock = Math.ceil(avgPerDay1Wk * 3); 
+const suggest1Wk = Math.ceil(sumTotal * 1.15);
+const suggest2Wk = Math.ceil(sumTotal * 1.15 * 2);
+const safetyStock = Math.ceil(sumTotal * 0.5); 
 
 const configuredMinStock = (med.min_stock !== null && med.min_stock !== undefined && med.min_stock > 0) ? med.min_stock : suggest1Wk; 
 const maxLevel = configuredMinStock + suggest2Wk;
