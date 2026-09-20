@@ -319,21 +319,25 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     try { 
       const { data, error } = await supabase.from("medicines").select(`*, medicine_lots (*)`).order("id", { ascending: false }); 
       if (error) throw error; 
-      if (data) {
-        setMedicines(data);
+      if (data) setMedicines(data);
+      
+      // ดึงประวัติธุรกรรมมาเก็บไว้คำนวณเรทเบิก
+      const { data: txData, error: txErr } = await supabase
+        .from("stock_transactions")
+        .select("*")
+        .order("created_at", { ascending: false });
         
-        if (typeof window !== 'undefined') {
-           const params = new URLSearchParams(window.location.search);
-           const scanId = params.get('id') || params.get('scan') || params.get('med');
-           if (scanId) {
-              const targetMed = data.find((m: any) => String(m.id) === String(scanId) || String(m.hosxp_icode) === String(scanId));
-              if (targetMed) {
-                 openHistoryModal(targetMed);
-              }
-              window.history.replaceState({}, document.title, window.location.pathname);
-           }
-        }
+      if (txErr) console.error("Error fetching transactions:", txErr);
+      if (txData) {
+        setAllTransactions(txData);
+        console.log("เช็คประวัติธุรกรรมที่โหลดมา:", txData);
       }
+    } catch (error) { 
+      console.error(error); 
+    } finally { 
+      setLoading(false); 
+    } 
+  };
       // [เพิ่มตรงนี้] ดึงประวัติการทำรายการล่าสุด 500 รายการมาคำนวณเรทเบิก
 const { data: txData } = await supabase.from("stock_transactions").select("*").in("action", ["out","in"]).order('created_at', { ascending: false }).limit(500); 
       if (txData) setAllTransactions(txData); 
@@ -1162,11 +1166,14 @@ start14Time.setHours(0,0,0,0);
 
 const medOutTxs = allTransactions.filter((tx: any) => tx.medicine_id.toString() === med.id.toString() && tx.action === 'out');
 
-// [เช็คด่วน] ดึงยอดตัดจ่ายทั้งหมดของยานี้มาโชว์ก่อน (ไม่จำกัด 7 วัน)
-const medOutTxs = allTransactions.filter((tx: any) => tx.medicine_id.toString() === med.id.toString() && tx.action === 'out');
-              
-// เอายอดตัดจ่ายทั้งหมดมารวมกันตรงๆ เลย
-const sumTotal = medOutTxs.reduce((sum: number, tx: any) => sum + tx.amount, 0);
+// [โค้ดตรวจสอบ] เช็คว่ามีประวัติในระบบกี่รายการ
+const medOutTxs = allTransactions.filter((tx: any) => 
+  String(tx.medicine_id) === String(med.id) && 
+  String(tx.action).toLowerCase() === 'out'
+);
+
+// ถ้าคำนวณแล้วยังเป็น 0 ให้ลองเอาบรรทัดนี้ไปแปะดูว่ามีข้อมูลไหม
+const sumTotal = medOutTxs.reduce((sum: number, tx: any) => sum + (Number(tx.amount) || 0), 0);
 
 const suggest1Wk = Math.ceil(sumTotal * 1.15);
 const suggest2Wk = Math.ceil(sumTotal * 1.15 * 2);
