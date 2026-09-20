@@ -33,13 +33,38 @@ async function sha256Hex(t: string) {
 }
 
 const formatBoxString = (totalItems: number, packSize: number, unitName: string) => { 
-  if (packSize <= 1 || totalItems === 0) return `${totalItems} ${unitName}`; 
-  const packs = Math.floor(totalItems / packSize); 
-  const rem = totalItems % packSize; 
-  const unitStr = unitName === "'s" ? "เม็ด" : unitName;
+  const qty = Number(totalItems) || 0;
+  const size = Number(packSize) || 1;
+  const unitStr = unitName === "'s" ? "เม็ด" : (unitName || "หน่วย");
+
+  if (size <= 1 || qty === 0) return `${qty} ${unitStr}`;
+  const packs = Math.floor(qty / size); 
+  const rem = qty % size; 
+
   if (packs === 0) return `${rem} ${unitStr}`; 
-  return `${packs} กล่อง × ${packSize} ${unitStr} ${rem > 0 ? `(เศษ ${rem} ${unitStr})` : ''}`; 
-}
+  return `${packs} กล่อง × ${size} ${unitStr} ${rem > 0 ? `(เศษ ${rem} ${unitStr})` : ''}`; 
+};
+
+// ===== การคำนวณยอดเบิก =====
+// นับวันแบบรวมวันแรกและวันสุดท้าย เช่น 01/09 - 30/09 = 30 วัน
+const getInclusiveDays = (start: Date, end: Date) => {
+  const msPerDay = 1000 * 60 * 60 * 24;
+  return Math.max(1, Math.floor((end.getTime() - start.getTime()) / msPerDay) + 1);
+};
+
+const getDispenseRecommendation = (totalOut: number, days: number) => {
+  const safeTotal = Number(totalOut) || 0;
+  const safeDays = Math.max(1, Number(days) || 1);
+  const avgPerDay = safeTotal / safeDays;
+  const buffer = 1.15; // เผื่อ 15%
+
+  return {
+    avgPerDay,
+    oneWk: Math.ceil(avgPerDay * 7 * buffer),
+    twoWk: Math.ceil(avgPerDay * 14 * buffer),
+  };
+};
+
 
 const SmartDateInput = ({ value, onChange, placeholder = "วว/ดด/ปปปป หรือ 150926", className, required }: any) => {
     const [display, setDisplay] = useState("");
@@ -305,12 +330,12 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   useEffect(() => {
     setBaseUrl(typeof window !== 'undefined' ? window.location.origin : '');
     
-    // ตั้งค่า Default สำหรับ Modal คำนวณเบิกยา (ย้อนหลัง 30 วัน)
+    // ตั้งค่า Default สำหรับ Modal คำนวณเบิกยา (ย้อนหลัง 30 วัน รวมวันนี้)
     const today = new Date();
-    const endStr = today.toISOString().split('T')[0];
+    const endStr = today.toLocaleDateString('en-CA');
     const start = new Date();
-    start.setDate(start.getDate() - 30);
-    const startStr = start.toISOString().split('T')[0];
+    start.setDate(start.getDate() - 29); // รวมวันนี้ = 30 วันปฏิทิน
+    const startStr = start.toLocaleDateString('en-CA');
     setCalcStartDate(startStr);
     setCalcEndDate(endStr);
   }, []);
@@ -334,10 +359,25 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
            }
         }
       }
-      // [เพิ่มตรงนี้] ดึงประวัติการทำรายการล่าสุด 500 รายการมาคำนวณเรทเบิก
-const { data: txData } = await supabase.from("stock_transactions").select("*").in("action", ["out","in"]).order('created_at', { ascending: false }).limit(500); 
-      if (txData) setAllTransactions(txData); 
-      console.log("ประวัติธุรกรรมทั้งหมดที่ดึงมา:", txData); // <--- เพิ่มบรรทัดนี้เพื่อดูค่าใน Console
+      // ดึงเฉพาะ "ตัดจ่ายจริงที่เสร็จสมบูรณ์" ย้อนหลัง 30 วัน
+      // ใช้สำหรับแสดงเรทเบิกบนการ์ดยา และไม่ปนรายการ visitor_note / pending
+      const usageStart = new Date();
+      usageStart.setHours(0, 0, 0, 0);
+      usageStart.setDate(usageStart.getDate() - 29);
+
+      const { data: txData, error: txError } = await supabase
+        .from("stock_transactions")
+        .select("medicine_id, amount, created_at, action, status")
+        .eq("action", "out")
+        .eq("status", "completed")
+        .gte("created_at", usageStart.toISOString())
+        .lte("created_at", new Date().toISOString())
+        .order("created_at", { ascending: false })
+        .limit(5000);
+
+      if (txError) throw txError;
+      setAllTransactions(txData || []);
+
     } catch (error) { 
       console.error(error); 
     } finally { 
@@ -570,65 +610,86 @@ const { data: txData } = await supabase.from("stock_transactions").select("*").i
     } catch (e: any) { alert("นำเข้าไม่สำเร็จ: " + e.message); } finally { setImporting(false); }
   };
 
-  const handleCalculateDispense = () => {
+  const handleCalculateDispense = async () => {
     if (!calcStartDate || !calcEndDate) return alert("กรุณาเลือกวันที่ให้ครบ");
-    const start = new Date(calcStartDate);
-    start.setHours(0,0,0,0);
-    const end = new Date(calcEndDate);
-    end.setHours(23,59,59,999);
 
-    const results = medicines
-      .filter(m => calcCategory === "all" || String(m.cabinet_category) === String(calcCategory))
-      .map(med => {
-          // ดึงประวัติรายการเฉพาะ action='out'
-          const medOutTxs = allTransactions.filter(tx => tx.medicine_id.toString() === med.id.toString() && tx.action === 'out');
-          
-          let actualStartDt = start;
-          if (medOutTxs.length > 0) {
-             const earliestOutTx = medOutTxs.reduce((earliest, current) => {
-                return new Date(current.created_at).getTime() < new Date(earliest.created_at).getTime() ? current : earliest;
-             });
-             const earliestOutDate = new Date(earliestOutTx.created_at);
-             earliestOutDate.setHours(0,0,0,0);
-             if (earliestOutDate.getTime() > start.getTime()) {
-                actualStartDt = earliestOutDate;
-             }
-          }
+    // สร้างวันที่แบบ Local เพื่อป้องกันปัญหา timezone ทำให้วันเลื่อน
+    const toLocalStart = (dateStr: string) => {
+      const [y, m, d] = dateStr.split("-").map(Number);
+      return new Date(y, m - 1, d, 0, 0, 0, 0);
+    };
 
-          const daysDiff = Math.max(1, Math.ceil((end.getTime() - actualStartDt.getTime()) / (1000 * 60 * 60 * 24)));
+    const start = toLocalStart(calcStartDate);
+    const end = toLocalStart(calcEndDate);
+    end.setHours(23, 59, 59, 999);
 
-          const txsPeriod = medOutTxs.filter(tx =>
-              new Date(tx.created_at) >= actualStartDt &&
-              new Date(tx.created_at) <= end
+    if (start.getTime() > end.getTime()) {
+      return alert("วันที่เริ่มต้นต้องไม่มากกว่าวันที่สิ้นสุด");
+    }
+
+    try {
+      // ดึงข้อมูลใหม่ทุกครั้งที่กดคำนวณ เพื่อให้ตัวเลขตรงกับช่วงวันที่ที่เลือก
+      // และใช้เฉพาะการตัดจ่ายจริงที่ status = completed
+      const { data: txData, error: txError } = await supabase
+        .from("stock_transactions")
+        .select("medicine_id, amount, created_at, action, status")
+        .eq("action", "out")
+        .eq("status", "completed")
+        .gte("created_at", start.toISOString())
+        .lte("created_at", end.toISOString())
+        .order("created_at", { ascending: true });
+
+      if (txError) throw txError;
+
+      const periodTxs = txData || [];
+      const daysDiff = getInclusiveDays(start, end);
+
+      const results = medicines
+        .filter(m => calcCategory === "all" || String(m.cabinet_category) === String(calcCategory))
+        .map(med => {
+          const medOutTxs = periodTxs.filter(
+            (tx: any) => String(tx.medicine_id) === String(med.id)
           );
 
-          const totalOut = txsPeriod.reduce((sum, tx) => sum + tx.amount, 0);
-          const avgPerDay = totalOut / daysDiff; 
+          const totalOut = medOutTxs.reduce(
+            (sum: number, tx: any) => sum + (Number(tx.amount) || 0),
+            0
+          );
 
-          const oneWk = Math.ceil((avgPerDay * 7) * 1.15);
-          const twoWk = Math.ceil((avgPerDay * 14) * 1.15);
+          const { avgPerDay, oneWk, twoWk } =
+            getDispenseRecommendation(totalOut, daysDiff);
 
           let currentStock = 0;
           let packSize = 1;
           let unitName = "'s";
+
           if (med.medicine_lots && med.medicine_lots.length > 0) {
-             currentStock = med.medicine_lots.reduce((sum: number, l: any) => sum + l.current_stock, 0);
-             packSize = med.medicine_lots[0].pack_size;
-             unitName = med.medicine_lots[0].unit_name;
+            currentStock = med.medicine_lots.reduce(
+              (sum: number, l: any) => sum + (Number(l.current_stock) || 0),
+              0
+            );
+            packSize = Number(med.medicine_lots[0].pack_size) || 1;
+            unitName = med.medicine_lots[0].unit_name || "'s";
           }
 
           return {
-              ...med,
-              totalOut,
-              currentStock,
-              oneWk,
-              twoWk,
-              packSize,
-              unitName
+            ...med,
+            totalOut,
+            currentStock,
+            avgPerDay,
+            daysDiff,
+            oneWk,
+            twoWk,
+            packSize,
+            unitName
           };
-      });
+        });
 
-    setCalcData(results.sort((a,b) => b.totalOut - a.totalOut));
+      setCalcData(results.sort((a, b) => b.totalOut - a.totalOut));
+    } catch (error: any) {
+      console.error("Calculate dispense error:", error);
+      alert("คำนวณยอดเบิกไม่สำเร็จ: " + (error?.message || "เกิดข้อผิดพลาด"));
+    }
   };
 
   const filteredMedicines = medicines
@@ -1123,31 +1184,37 @@ const { data: txData } = await supabase.from("stock_transactions").select("*").i
         </div>
 
         {/* รายการยา */}
-        {loading ? (<div className="p-10 text-center text-slate-400 bg-white/60 backdrop-blur-xl rounded-3xl">กำลังโหลด...</div>) : filteredMedicines.length === 0 ? (<div className="p-10 text-center text-slate-400 bg-white/60 backdrop-blur-xl rounded-3xl">ไม่พบรายการ</div>) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5">
-            {filteredMedicines.map((med) => {
-              const activeLots = (med.medicine_lots || []).filter((l: any) => l.current_stock > 0).sort((a: any, b: any) => new Date(a.exp_date).getTime() - new Date(b.exp_date).getTime());
-              const isAvail = med.is_available !== false;
 
- {/* รายการยา */}
  {loading ? (<div className="p-10 text-center text-slate-400 bg-white/60 backdrop-blur-xl rounded-3xl">กำลังโหลด...</div>) : filteredMedicines.length === 0 ? (<div className="p-10 text-center text-slate-400 bg-white/60 backdrop-blur-xl rounded-3xl">ไม่พบรายการ</div>) : (
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5">
     {filteredMedicines.map((med) => {
       const activeLots = (med.medicine_lots || []).filter((l: any) => l.current_stock > 0).sort((a: any, b: any) => new Date(a.exp_date).getTime() - new Date(b.exp_date).getTime());
       const isAvail = med.is_available !== false;
 
-      // ดึงยอดตัดจ่ายทั้งหมดมารวมกันแบบตรงๆ
-      const medOutTxs = (allTransactions || []).filter((tx: any) => 
-        String(tx.medicine_id) === String(med.id) && 
-        String(tx.action).toLowerCase() === 'out'
-      );
-      
-      const sumTotal = medOutTxs.reduce((sum: number, tx: any) => sum + (Number(tx.amount) || 0), 0);
+      // ใช้ล็อตแรกที่มีข้อมูลแพ็กสำหรับจัดรูปแบบจำนวน
+      const sampleLot = (activeLots[0] || (med.medicine_lots || [])[0]);
+      const samplePackSize = Number(sampleLot?.pack_size) || 1;
+      const sampleUnitName = sampleLot?.unit_name || "'s";
 
-      const suggest1Wk = Math.ceil(sumTotal * 1.15);
-      const suggest2Wk = Math.ceil((sumTotal * 2) * 1.15);
-      const safetyStock = Math.ceil(sumTotal * 0.5); 
-      
+      // คำนวณจากการตัดจ่ายจริงย้อนหลัง 30 วัน
+      // ไม่ใช้ยอดสะสมทั้งหมด เพราะจะทำให้คำแนะนำ 1 wk / 2 wk สูงเกินจริง
+      const medOutTxs = (allTransactions || []).filter((tx: any) =>
+        String(tx.medicine_id) === String(med.id) &&
+        String(tx.action).toLowerCase() === "out" &&
+        String(tx.status).toLowerCase() === "completed"
+      );
+
+      const sumTotal = medOutTxs.reduce(
+        (sum: number, tx: any) => sum + (Number(tx.amount) || 0),
+        0
+      );
+
+      const { avgPerDay, oneWk: suggest1Wk, twoWk: suggest2Wk } =
+        getDispenseRecommendation(sumTotal, 30);
+
+      // สำรอง 3 วัน + buffer 15%
+      const safetyStock = Math.ceil(avgPerDay * 3 * 1.15); 
+
       const configuredMinStock = (med.min_stock !== null && med.min_stock !== undefined && med.min_stock > 0) ? med.min_stock : (suggest1Wk > 0 ? suggest1Wk : 10); 
       const maxLevel = configuredMinStock + (suggest2Wk > 0 ? suggest2Wk : 20);
       
@@ -1190,7 +1257,7 @@ const { data: txData } = await supabase.from("stock_transactions").select("*").i
                   {session && (
                     <div className="bg-cyan-50/60 border border-cyan-100 rounded-2xl p-2.5 text-xs space-y-1">
                       <div className="text-[10px] font-bold text-cyan-800">
-                        📊 แนะนำเบิก (+ เผื่อ 15%):
+                        📊 แนะนำเบิก (เฉลี่ย 30 วันล่าสุด + เผื่อ 15%):
                       </div>
                       <div className="flex justify-between text-slate-700 font-medium">
                         <span>1 สัปดาห์ (7 วัน):</span>
@@ -1269,6 +1336,11 @@ const { data: txData } = await supabase.from("stock_transactions").select("*").i
                 </div>
 
                 <div className="flex-1 overflow-y-auto mt-4 pr-2">
+                  {calcData.length > 0 && (
+                    <div className="mb-3 text-xs text-slate-500 bg-cyan-50 border border-cyan-100 rounded-xl px-3 py-2">
+                      สูตร: (ยอดตัดจ่ายจริง ÷ จำนวนวันในช่วง) × 7 หรือ 14 วัน × 1.15
+                    </div>
+                  )}
                   {calcData.length === 0 ? (
                      <div className="text-center py-12 text-slate-400 font-medium">กดปุ่ม "คำนวณยอด" เพื่อแสดงข้อมูล</div>
                   ) : (
@@ -1277,6 +1349,7 @@ const { data: txData } = await supabase.from("stock_transactions").select("*").i
                            <tr className="bg-slate-100 text-slate-600">
                               <th className="p-3 rounded-tl-xl font-bold">ชื่อยา</th>
                               <th className="p-3 text-center font-bold">ยอดตัดจ่ายจริงในรอบนี้</th>
+                              <th className="p-3 text-center font-bold">เฉลี่ย/วัน</th>
                               <th className="p-3 text-center font-bold">คงเหลือปัจจุบัน</th>
                               <th className="p-3 text-center font-bold text-blue-600">แนะนำเบิก (1 wk)</th>
                               <th className="p-3 text-center font-bold text-purple-600 rounded-tr-xl">แนะนำเบิก (2 wk)</th>
@@ -1290,6 +1363,7 @@ const { data: txData } = await supabase.from("stock_transactions").select("*").i
                                    <div className="text-xs text-slate-500">{row.hosxp_icode || "-"}</div>
                                  </td>
                                  <td className="p-3 text-center font-medium text-slate-600">{formatBoxString(row.totalOut, row.packSize, row.unitName)}</td>
+                                 <td className="p-3 text-center font-semibold text-slate-700">{Number(row.avgPerDay || 0).toFixed(2)} {row.unitName === "'s" ? "เม็ด" : (row.unitName || "หน่วย")}</td>
                                  <td className="p-3 text-center font-bold text-emerald-600">{formatBoxString(row.currentStock, row.packSize, row.unitName)}</td>
                                  <td className="p-3 text-center font-extrabold text-blue-600">{formatBoxString(row.oneWk, row.packSize, row.unitName)}</td>
                                  <td className="p-3 text-center font-extrabold text-purple-600">{formatBoxString(row.twoWk, row.packSize, row.unitName)}</td>
