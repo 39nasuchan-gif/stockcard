@@ -584,20 +584,38 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     const end = new Date(calcEndDate);
     end.setHours(23,59,59,999);
 
-    const daysDiff = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-
     const results = medicines
       .filter(m => calcCategory === "all" || String(m.cabinet_category) === String(calcCategory))
       .map(med => {
-          const txs = allTransactions.filter(tx =>
-              tx.medicine_id.toString() === med.id.toString() &&
+          // [แก้ใหม่] หาประวัติทั้งหมดของยาเพื่อเช็ควันแรกที่เข้าคลัง
+          const medAllTxs = allTransactions.filter(tx => tx.medicine_id.toString() === med.id.toString());
+          
+          // กำหนดวันเริ่มต้นจริงสำหรับยานี้
+          let actualStartDt = start;
+          if (medAllTxs.length > 0) {
+             const earliestTx = medAllTxs.reduce((earliest, current) => {
+                return new Date(current.created_at).getTime() < new Date(earliest.created_at).getTime() ? current : earliest;
+             });
+             const earliestDate = new Date(earliestTx.created_at);
+             earliestDate.setHours(0,0,0,0);
+             if (earliestDate.getTime() > start.getTime()) {
+                actualStartDt = earliestDate;
+             }
+          }
+
+          // คำนวณจำนวนวันตามความจริงสำหรับยานี้
+          const daysDiff = Math.max(1, Math.ceil((end.getTime() - actualStartDt.getTime()) / (1000 * 60 * 60 * 24)));
+
+          const txs = medAllTxs.filter(tx =>
               tx.action === 'out' &&
-              new Date(tx.created_at) >= start &&
+              new Date(tx.created_at) >= actualStartDt &&
               new Date(tx.created_at) <= end
           );
 
           const totalOut = txs.reduce((sum, tx) => sum + tx.amount, 0);
-          const avgPerDay = totalOut / daysDiff;
+          
+          // ตัวเลขเฉลี่ยต่อวันจะสมจริงและเยอะขึ้น สำหรับยาเพิ่งรับเข้า
+          const avgPerDay = totalOut / daysDiff; 
 
           // สูตรคำนวณ + เผื่อคาดเคลื่อน 15%
           const oneWk = Math.ceil((avgPerDay * 7) * 1.15);
@@ -1149,19 +1167,35 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
               startDt.setHours(0,0,0,0);
               const endDt = new Date(cardCalcEndDate);
               endDt.setHours(23,59,59,999);
-              const daysDiff = Math.max(1, Math.ceil((endDt.getTime() - startDt.getTime()) / (1000 * 60 * 60 * 24)));
 
-              const medTxs = allTransactions.filter((tx: any) => 
-                tx.medicine_id.toString() === med.id.toString() &&
+              // [แก้ใหม่] หาประวัติการทำรายการทั้งหมดของยาตัวนี้
+              const medAllTxs = allTransactions.filter((tx: any) => tx.medicine_id.toString() === med.id.toString());
+              
+              // กำหนดวันเริ่มต้นจริง (ถ้าเพิ่งรับยาเข้ามาใหม่ ให้ใช้วันที่รับแรกสุดแทน)
+              let actualStartDt = startDt;
+              if (medAllTxs.length > 0) {
+                const earliestTx = medAllTxs.reduce((earliest, current) => {
+                  return new Date(current.created_at).getTime() < new Date(earliest.created_at).getTime() ? current : earliest;
+                });
+                const earliestDate = new Date(earliestTx.created_at);
+                earliestDate.setHours(0,0,0,0);
+                
+                // ถ้ายานี้เพิ่งถูกเพิ่มเข้ามา"หลัง"วันที่กำหนดในช่องค้นหา ให้เริ่มนับจากวันแรกที่มีประวัติ
+                if (earliestDate.getTime() > startDt.getTime()) {
+                  actualStartDt = earliestDate;
+                }
+              }
+
+              // คำนวณจำนวนวันตามความจริง (หารด้วยจำนวนวันที่มีของในคลังจริงๆ)
+              const daysDiff = Math.max(1, Math.ceil((endDt.getTime() - actualStartDt.getTime()) / (1000 * 60 * 60 * 24)));
+
+              const medTxs = medAllTxs.filter((tx: any) => 
                 tx.action === 'out' &&
-                new Date(tx.created_at) >= startDt &&
+                new Date(tx.created_at) >= actualStartDt &&
                 new Date(tx.created_at) <= endDt
               );
               const totalOutPeriod = medTxs.reduce((sum: number, tx: any) => sum + tx.amount, 0);
               const avgPerDay = totalOutPeriod / daysDiff;
-
-              const suggest1Wk = Math.ceil((avgPerDay * 7) * 1.15);
-              const suggest2Wk = Math.ceil((avgPerDay * 14) * 1.15);
 
               // คำนวณ Safety Stock, Min Stock และ Max Level
               const safetyStock = Math.ceil(avgPerDay * 3); // สำรองฉุกเฉิน 3 วัน
