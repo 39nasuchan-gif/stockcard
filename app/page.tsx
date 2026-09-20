@@ -1128,39 +1128,45 @@ const { data: txData } = await supabase.from("stock_transactions").select("*").i
               const activeLots = (med.medicine_lots || []).filter((l: any) => l.current_stock > 0).sort((a: any, b: any) => new Date(a.exp_date).getTime() - new Date(b.exp_date).getTime());
               const isAvail = med.is_available !== false;
 
-             // [เพิ่ม/แทนที่ตรงนี้] นับยอดตัดจ่ายจริง 7 วัน และ 14 วันย้อนหลังแบบสดๆ
-             const now = new Date();
-             const endDt = new Date(now);
-             endDt.setHours(23,59,59,999);
+ // [ปรับปรุงใหม่] นับยอดตัดจ่ายจริง 7 วัน และ 14 วันย้อนหลังแบบเทียบแค่วันที่ (ไม่สนเวลา)
+ const now = new Date();
+ now.setHours(23,59,59,999);
 
-             const start7Dt = new Date(now);
-             start7Dt.setDate(now.getDate() - 7);
-             start7Dt.setHours(0,0,0,0);
+ const start7Dt = new Date();
+ start7Dt.setDate(now.getDate() - 7);
+ start7Dt.setHours(0,0,0,0);
 
-             const start14Dt = new Date(now);
-             start14Dt.setDate(now.getDate() - 14);
-             start14Dt.setHours(0,0,0,0);
+ const start14Dt = new Date();
+ start14Dt.setDate(now.getDate() - 14);
+ start14Dt.setHours(0,0,0,0);
 
-             const medOutTxs = allTransactions.filter((tx: any) => tx.medicine_id.toString() === med.id.toString() && tx.action === 'out');
+ const medOutTxs = allTransactions.filter((tx: any) => tx.medicine_id.toString() === med.id.toString() && tx.action === 'out');
 
-             // 1. ยอดตัดจ่ายรวม 7 วันล่าสุด
-             const txs1Wk = medOutTxs.filter((tx: any) => new Date(tx.created_at) >= start7Dt && new Date(tx.created_at) <= endDt);
-             const sum1Wk = txs1Wk.reduce((sum: number, tx: any) => sum + tx.amount, 0);
+ // กรองเฉพาะรายการตัดจ่ายในช่วง 7 วัน / 14 วันที่ผ่านมา
+ const txs1Wk = medOutTxs.filter((tx: any) => {
+   const txDate = new Date(tx.created_at);
+   return txDate >= start7Dt && txDate <= now;
+ });
+ const sum1Wk = txs1Wk.reduce((sum: number, tx: any) => sum + tx.amount, 0);
 
-             // 2. ยอดตัดจ่ายรวม 14 วันล่าสุด
-             const txs2Wk = medOutTxs.filter((tx: any) => new Date(tx.created_at) >= start14Dt && new Date(tx.created_at) <= endDt);
-             const sum2Wk = txs2Wk.reduce((sum: number, tx: any) => sum + tx.amount, 0);
+ const txs2Wk = medOutTxs.filter((tx: any) => {
+   const txDate = new Date(tx.created_at);
+   return txDate >= start14Dt && txDate <= now;
+ });
+ const sum2Wk = txs2Wk.reduce((sum: number, tx: any) => sum + tx.amount, 0);
 
-             // แนะนำเบิก = ยอดใช้จริงในรอบนั้นๆ + เผื่อคาดเคลื่อน 15%
-             const suggest1Wk = Math.ceil(sum1Wk * 1.15);
-             const suggest2Wk = Math.ceil(sum2Wk * 1.15);
+ // แนะนำเบิก = ยอดใช้จริง + เผื่อคาดเคลื่อน 15%
+ const suggest1Wk = Math.ceil(sum1Wk * 1.15);
+ const suggest2Wk = Math.ceil(sum2Wk * 1.15);
 
-             // คำนวณ Safety Stock (สำรอง 3 วัน)
-             const avgPerDay1Wk = sum1Wk / 7; 
-             const safetyStock = Math.ceil(avgPerDay1Wk * 3); 
-             
-             const configuredMinStock = med.min_stock > 0 ? med.min_stock : suggest1Wk; 
-             const maxLevel = configuredMinStock + suggest2Wk;
+ // Safety Stock (สำรอง 3 วัน)
+ const avgPerDay1Wk = sum1Wk / 7; 
+ const safetyStock = Math.ceil(avgPerDay1Wk * 3); 
+ 
+ // Min Stock และ Max Level
+ const configuredMinStock = (med.min_stock !== null && med.min_stock !== undefined && med.min_stock > 0) ? med.min_stock : suggest1Wk; 
+ const maxLevel = configuredMinStock + suggest2Wk;
+ 
               return (
                 <div key={med.id} className={`bg-white/70 backdrop-blur-xl rounded-3xl shadow-sm border p-5 flex flex-col gap-3.5 transition-all ${!isAvail ? 'border-red-300/80 bg-red-50/70' : 'border-white/80 hover:shadow-md'}`}>
                   <div className="flex justify-between items-start border-b border-white/50 pb-3">
