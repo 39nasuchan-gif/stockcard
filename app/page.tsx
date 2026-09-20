@@ -302,23 +302,14 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const [calcCategory, setCalcCategory] = useState<number | "all">("all");
   const [calcData, setCalcData] = useState<any[]>([]);
 
-  // States สำหรับตั้งค่าช่วงวันที่คำนวณบนการ์ดยา (ค่าเริ่มต้น 3 เดือนย้อนหลัง)
-  const [cardCalcStartDate, setCardCalcStartDate] = useState(() => {
-    const start = new Date();
-    start.setMonth(start.getMonth() - 3);
-    return start.toISOString().split('T')[0];
-  });
-  const [cardCalcEndDate, setCardCalcEndDate] = useState(() => {
-    return new Date().toISOString().split('T')[0];
-  });
-
   useEffect(() => {
     setBaseUrl(typeof window !== 'undefined' ? window.location.origin : '');
     
+    // ตั้งค่า Default สำหรับ Modal คำนวณเบิกยา (ย้อนหลัง 30 วัน)
     const today = new Date();
     const endStr = today.toISOString().split('T')[0];
     const start = new Date();
-    start.setMonth(start.getMonth() - 3);
+    start.setDate(start.getDate() - 30);
     const startStr = start.toISOString().split('T')[0];
     setCalcStartDate(startStr);
     setCalcEndDate(endStr);
@@ -587,37 +578,31 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     const results = medicines
       .filter(m => calcCategory === "all" || String(m.cabinet_category) === String(calcCategory))
       .map(med => {
-          // [แก้ใหม่] หาประวัติทั้งหมดของยาเพื่อเช็ควันแรกที่เข้าคลัง
-          const medAllTxs = allTransactions.filter(tx => tx.medicine_id.toString() === med.id.toString());
+          // ดึงประวัติรายการเฉพาะ action='out'
+          const medOutTxs = allTransactions.filter(tx => tx.medicine_id.toString() === med.id.toString() && tx.action === 'out');
           
-          // กำหนดวันเริ่มต้นจริงสำหรับยานี้
           let actualStartDt = start;
-          if (medAllTxs.length > 0) {
-             const earliestTx = medAllTxs.reduce((earliest, current) => {
+          if (medOutTxs.length > 0) {
+             const earliestOutTx = medOutTxs.reduce((earliest, current) => {
                 return new Date(current.created_at).getTime() < new Date(earliest.created_at).getTime() ? current : earliest;
              });
-             const earliestDate = new Date(earliestTx.created_at);
-             earliestDate.setHours(0,0,0,0);
-             if (earliestDate.getTime() > start.getTime()) {
-                actualStartDt = earliestDate;
+             const earliestOutDate = new Date(earliestOutTx.created_at);
+             earliestOutDate.setHours(0,0,0,0);
+             if (earliestOutDate.getTime() > start.getTime()) {
+                actualStartDt = earliestOutDate;
              }
           }
 
-          // คำนวณจำนวนวันตามความจริงสำหรับยานี้
           const daysDiff = Math.max(1, Math.ceil((end.getTime() - actualStartDt.getTime()) / (1000 * 60 * 60 * 24)));
 
-          const txs = medAllTxs.filter(tx =>
-              tx.action === 'out' &&
+          const txsPeriod = medOutTxs.filter(tx =>
               new Date(tx.created_at) >= actualStartDt &&
               new Date(tx.created_at) <= end
           );
 
-          const totalOut = txs.reduce((sum, tx) => sum + tx.amount, 0);
-          
-          // ตัวเลขเฉลี่ยต่อวันจะสมจริงและเยอะขึ้น สำหรับยาเพิ่งรับเข้า
+          const totalOut = txsPeriod.reduce((sum, tx) => sum + tx.amount, 0);
           const avgPerDay = totalOut / daysDiff; 
 
-          // สูตรคำนวณ + เผื่อคาดเคลื่อน 15%
           const oneWk = Math.ceil((avgPerDay * 7) * 1.15);
           const twoWk = Math.ceil((avgPerDay * 14) * 1.15);
 
@@ -1033,7 +1018,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     <div className="min-h-screen bg-gradient-to-br from-[#e0eaf5] via-[#f0f4f8] to-[#e8ebf2] p-2 md:p-8 font-sans">
       <div className="max-w-[1400px] mx-auto space-y-4 md:space-y-6">
         
-        {/* Header - Glassmorphism */}
+        {/* Header */}
         <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-white/70 backdrop-blur-xl p-4 md:p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/80">
           <div className="w-full xl:w-auto flex justify-between items-start md:items-center">
             <div><h1 className="text-2xl md:text-3xl font-extrabold text-slate-800 leading-tight tracking-tight">ระบบคลังยา <br className="md:hidden" /><span className="text-base md:text-2xl font-semibold text-slate-500 opacity-80">(จัดล็อต EXP)</span></h1></div>
@@ -1115,7 +1100,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           </div>
         )}
 
-        {/* หมวดหมู่และการค้นหา พร้อมช่องกำหนดช่วงเวลาคำนวณเรทเบิกการ์ด */}
+        {/* หมวดหมู่และการค้นหา */}
         <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/80 p-4 md:p-5 w-full">
           <div className="flex flex-wrap gap-2.5 mb-4">
             <button onClick={() => handleSelectCategory("all")} className={`px-4 py-2 rounded-2xl text-sm font-bold border transition-all ${selectedCategory === "all" ? "bg-slate-800 text-white shadow-md" : "bg-white/60 text-slate-600 hover:bg-white/90"}`}>ทั้งหมด</button>
@@ -1129,7 +1114,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
             )})}
             {session && (<button onClick={handleAddCategory} className="px-4 py-2 rounded-2xl border-2 border-dashed border-slate-300 text-slate-500 text-sm font-semibold flex gap-1.5"><Plus size={16} /> เพิ่มตู้</button>)}
           </div>
-          <div className="flex flex-col md:flex-row gap-3 mt-4 items-center">
+          <div className="flex flex-col md:flex-row gap-3 items-center">
             <div className="relative flex-1 w-full"><Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" /><input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="ค้นหาชื่อยา..." className="w-full bg-white/50 border border-white rounded-2xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:ring-blue-400 text-slate-700" /></div>
             <select className="w-full md:w-auto bg-white/50 rounded-2xl px-4 py-3 text-sm" value={sortOrder} onChange={(e) => setSortOrder(e.target.value as 'recent'|'alpha')}><option value="alpha">เรียง (ก-ฮ)</option><option value="recent">แก้ไขล่าสุด</option></select>
           </div>
@@ -1138,8 +1123,11 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         {/* รายการยา */}
         {loading ? (<div className="p-10 text-center text-slate-400 bg-white/60 backdrop-blur-xl rounded-3xl">กำลังโหลด...</div>) : filteredMedicines.length === 0 ? (<div className="p-10 text-center text-slate-400 bg-white/60 backdrop-blur-xl rounded-3xl">ไม่พบรายการ</div>) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5">
-            
-            // [แบบใหม่] นับยอดตัดจ่ายจริง 7 วัน และ 14 วันย้อนหลังแบบตรงไปตรงมา
+            {filteredMedicines.map((med) => {
+              const activeLots = (med.medicine_lots || []).filter((l: any) => l.current_stock > 0).sort((a: any, b: any) => new Date(a.exp_date).getTime() - new Date(b.exp_date).getTime());
+              const isAvail = med.is_available !== false;
+
+              // [นับยอดตัดจ่ายจริง 7 วัน และ 14 วันย้อนหลังแบบตรงไปตรงมา]
               const now = new Date();
               const endDt = new Date(now);
               endDt.setHours(23,59,59,999);
@@ -1152,33 +1140,24 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
               start14Dt.setDate(now.getDate() - 14);
               start14Dt.setHours(0,0,0,0);
 
-              // ดึงประวัติการ "ตัดจ่าย" (out) ของยาตัวนี้
               const medOutTxs = allTransactions.filter((tx: any) => tx.medicine_id.toString() === med.id.toString() && tx.action === 'out');
 
-              // 1. ยอดตัดจ่ายรวมในรอบ 7 วันที่ผ่านมา
+              // ยอดตัดจ่ายรวมในรอบ 7 วัน และ 14 วัน
               const txs1Wk = medOutTxs.filter((tx: any) => new Date(tx.created_at) >= start7Dt && new Date(tx.created_at) <= endDt);
               const sum1Wk = txs1Wk.reduce((sum: number, tx: any) => sum + tx.amount, 0);
 
-              // 2. ยอดตัดจ่ายรวมในรอบ 14 วันที่ผ่านมา
               const txs2Wk = medOutTxs.filter((tx: any) => new Date(tx.created_at) >= start14Dt && new Date(tx.created_at) <= endDt);
               const sum2Wk = txs2Wk.reduce((sum: number, tx: any) => sum + tx.amount, 0);
 
-              // ----------------------------------------------------
               // แนะนำเบิก = ยอดใช้จริงในรอบนั้นๆ + เผื่อคาดเคลื่อน 15%
-              // ----------------------------------------------------
               const suggest1Wk = Math.ceil(sum1Wk * 1.15);
               const suggest2Wk = Math.ceil(sum2Wk * 1.15);
 
-              // ----------------------------------------------------
               // คำนวณ Safety Stock (สำรอง 3 วัน), Min Stock และ Max Level
-              // ----------------------------------------------------
-              const avgPerDay1Wk = sum1Wk / 7; // หาเฉลี่ยต่อวันจากยอด 7 วันล่าสุด
+              const avgPerDay1Wk = sum1Wk / 7; // เฉลี่ยรายวันในช่วง 7 วันล่าสุด
               const safetyStock = Math.ceil(avgPerDay1Wk * 3); 
               
-              // ถ้าไม่ได้ตั้งค่า Min Stock ไว้ ให้ใช้ยอดแนะนำเบิก 1wk เป็นจุดสั่งซื้อ
               const configuredMinStock = med.min_stock > 0 ? med.min_stock : suggest1Wk; 
-              
-              // Max Level (สต็อกสูงสุด) = จุดสั่งซื้อ + เรทเบิก 2 สัปดาห์
               const maxLevel = configuredMinStock + suggest2Wk; 
 
               const samplePackSize = med.medicine_lots?.[0]?.pack_size || 1;
@@ -1219,7 +1198,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                      )}
                   </div>
 
-                  {/* แสดงเรทเบิกแนะนำ 1 wk และ 2 wk บนการ์ดอัตโนมัติ */}
+                  {/* แสดงเรทเบิกแนะนำ */}
                   {session && (
                     <div className="bg-cyan-50/60 border border-cyan-100 rounded-2xl p-2.5 text-xs space-y-1">
                       <div className="text-[10px] font-bold text-cyan-800">
@@ -1236,7 +1215,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                     </div>
                   )}
 
-                  {/* แสดง Safety Stock, Min Stock และ Max Level บนการ์ด */}
+                  {/* แสดง Safety Stock, Min Stock และ Max Level */}
                   {session && (
                     <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-2.5 text-xs space-y-1">
                       <div className="text-[10px] font-bold text-slate-500">
@@ -1289,7 +1268,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                      </select>
                   </div>
                   <div>
-                     <label className="block text-xs font-bold text-slate-600 mb-1">ตั้งแต่ (เริ่มต้นที่ 3 เดือนย้อนหลัง)</label>
+                     <label className="block text-xs font-bold text-slate-600 mb-1">คำนวณย้อนหลังตั้งแต่</label>
                      <input type="date" className="bg-white border border-slate-200 rounded-xl p-2.5 text-sm outline-none shadow-sm" value={calcStartDate} onChange={(e) => setCalcStartDate(e.target.value)} />
                   </div>
                   <div>
@@ -1309,7 +1288,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                         <thead>
                            <tr className="bg-slate-100 text-slate-600">
                               <th className="p-3 rounded-tl-xl font-bold">ชื่อยา</th>
-                              <th className="p-3 text-center font-bold">ยอดใช้ไปในรอบนี้</th>
+                              <th className="p-3 text-center font-bold">ยอดตัดจ่ายจริงในรอบนี้</th>
                               <th className="p-3 text-center font-bold">คงเหลือปัจจุบัน</th>
                               <th className="p-3 text-center font-bold text-blue-600">แนะนำเบิก (1 wk)</th>
                               <th className="p-3 text-center font-bold text-purple-600 rounded-tr-xl">แนะนำเบิก (2 wk)</th>
@@ -1481,7 +1460,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                   <div><label className="block text-sm font-medium mb-1.5 text-slate-600">รหัส HosXP</label><input type="text" className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400" value={medFormData.hosxp_icode} onChange={(e) => setMedFormData({ ...medFormData, hosxp_icode: e.target.value })} /></div>
                 </div>
                 
-                {/* เพิ่มช่องกรอก Min Stock */}
                 <div>
                   <label className="block text-sm font-medium mb-1.5 text-slate-600">สต็อกขั้นต่ำ (Min Stock)</label>
                   <input type="number" min="0" className="w-full border border-white bg-white/50 shadow-sm rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-400" value={medFormData.min_stock} onChange={(e) => setMedFormData({ ...medFormData, min_stock: e.target.value })} placeholder="เช่น 50" />
