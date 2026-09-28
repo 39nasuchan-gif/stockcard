@@ -1388,7 +1388,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
 
                 <div className="flex flex-wrap gap-2 py-4 border-b border-slate-100 shrink-0">
                   {[
-                    { label: "6 เดือน (180 วัน)", val: 180 }, { label: "2 เดือน (60 วัน)", val: 60 },
+                    { label: "6 เดือน (180 วัน)", val: 180 }, { label: "5 เดือน (150 วัน)", val: 150 },{ label: "4 เดือน (120 วัน)", val: 120 }, { label: "3 เดือน (90 วัน)", val: 90 }, { label: "2 เดือน (60 วัน)", val: 60 },
                     { label: "1 เดือน (30 วัน)", val: 30 }, { label: "15 วัน", val: 15 },
                     { label: "7 วัน", val: 7 }, { label: "2 วัน", val: 2 },
                     { label: "หมดอายุวันนี้ (0 วัน)", val: 0 },
