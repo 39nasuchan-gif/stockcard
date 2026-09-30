@@ -313,7 +313,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const [isExpDashboardOpen, setIsExpDashboardOpen] = useState(false);
   const [expFilterDays, setExpFilterDays] = useState<number>(30);
 
-  // ===== ระบบยาที่ต้องจัดการ / ค้างจ่ายคนไข้ =====
+  // ===== ระบบยาที่ต้องจัดการ / ค้างจ่ายผู้ป่วย =====
   const [actionItems, setActionItems] = useState<any[]>([]);
   const [pendingPatientItems, setPendingPatientItems] = useState<any[]>([]);
   const [isActionDashboardOpen, setIsActionDashboardOpen] = useState(false);
@@ -321,13 +321,15 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
 
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [actionTargetMed, setActionTargetMed] = useState<any>(null);
-  const [actionReason, setActionReason] = useState("คาดว่ายาไม่พอใช้");
+  const [actionMedicineSearch, setActionMedicineSearch] = useState("");
+  const [actionReason, setActionReason] = useState("รอ EXP แล้วส่งคืนคลัง");
   const [actionQuantity, setActionQuantity] = useState("");
   const [actionNote, setActionNote] = useState("");
   const [actionSubmitting, setActionSubmitting] = useState(false);
 
   const [isPendingPatientModalOpen, setIsPendingPatientModalOpen] = useState(false);
   const [pendingPatientMedicineId, setPendingPatientMedicineId] = useState("");
+  const [pendingPatientMedicineSearch, setPendingPatientMedicineSearch] = useState("");
   const [pendingPatientHN, setPendingPatientHN] = useState("");
   const [pendingPatientName, setPendingPatientName] = useState("");
   const [pendingPatientQuantity, setPendingPatientQuantity] = useState("");
@@ -437,7 +439,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     } catch (e) {} 
   };
 
-  // ===== โหลดรายการยาที่ต้องจัดการ / ค้างจ่ายคนไข้ =====
+  // ===== โหลดรายการยาที่ต้องจัดการ / ค้างจ่ายผู้ป่วย =====
   const fetchManagementItems = async () => {
     try {
       const [{ data: actionData, error: actionError }, { data: pendingData, error: pendingError }] = await Promise.all([
@@ -667,7 +669,17 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       return;
     }
     setActionTargetMed(med);
-    setActionReason("คาดว่ายาไม่พอใช้");
+    setActionMedicineSearch(med?.name || "");
+    setActionReason("รอ EXP แล้วส่งคืนคลัง");
+    setActionQuantity("");
+    setActionNote("");
+    setIsActionModalOpen(true);
+  };
+
+  const openNewActionModal = () => {
+    setActionTargetMed(null);
+    setActionMedicineSearch("");
+    setActionReason("รอ EXP แล้วส่งคืนคลัง");
     setActionQuantity("");
     setActionNote("");
     setIsActionModalOpen(true);
@@ -675,7 +687,10 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
 
   const handleCreateActionItem = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!session || !actionTargetMed) return;
+    if (!session || !actionTargetMed) {
+      alert("กรุณาเลือกยา");
+      return;
+    }
 
     setActionSubmitting(true);
     try {
@@ -698,6 +713,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       alert("เพิ่มรายการยาที่ต้องจัดการแล้ว");
       setIsActionModalOpen(false);
       setActionTargetMed(null);
+      setActionMedicineSearch("");
       await fetchManagementItems();
     } catch (e: any) {
       alert("บันทึกไม่สำเร็จ: " + e.message);
@@ -722,9 +738,10 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     }
   };
 
-  // ===== ค้างจ่ายยาให้คนไข้ =====
+  // ===== ค้างจ่ายยาให้ผู้ป่วย =====
   const resetPendingPatientForm = () => {
     setPendingPatientMedicineId("");
+    setPendingPatientMedicineSearch("");
     setPendingPatientHN("");
     setPendingPatientName("");
     setPendingPatientQuantity("");
@@ -735,7 +752,10 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
 
   const openPendingPatientModal = (med?: any) => {
     resetPendingPatientForm();
-    if (med) setPendingPatientMedicineId(String(med.id));
+    if (med) {
+      setPendingPatientMedicineId(String(med.id));
+      setPendingPatientMedicineSearch(med.name || "");
+    }
     setIsPendingPatientModalOpen(true);
   };
 
@@ -743,7 +763,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     e.preventDefault();
     if (!session) return;
     if (!pendingPatientMedicineId || !pendingPatientHN.trim() || !pendingPatientName.trim() || !pendingPatientQuantity) {
-      return alert("กรุณากรอก ยา, HN, ชื่อคนไข้ และจำนวนยาให้ครบ");
+      return alert("กรุณากรอก ยา, HN, ชื่อผู้ป่วย และจำนวนยาให้ครบ");
     }
 
     const quantity = Number(pendingPatientQuantity);
@@ -764,7 +784,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       }]);
       if (error) throw error;
 
-      alert("บันทึกค้างจ่ายคนไข้แล้ว");
+      alert("บันทึกค้างจ่ายผู้ป่วยแล้ว");
       setIsPendingPatientModalOpen(false);
       resetPendingPatientForm();
       await fetchManagementItems();
@@ -777,7 +797,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
 
   const handleClosePendingPatient = async (id: number) => {
     if (!session) return;
-    if (!confirm("ยืนยันว่าดำเนินการจ่ายยาให้คนไข้เรียบร้อยแล้ว และปิดรายการ?")) return;
+    if (!confirm("ยืนยันว่าดำเนินการจ่ายยาให้ผู้ป่วยเรียบร้อยแล้ว และปิดรายการ?")) return;
     try {
       const { error } = await supabase.from("patient_pending_medicines").update({
         status: "completed",
@@ -1495,15 +1515,15 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
 
                   {session && (
                     <div className="grid grid-cols-2 gap-2 mt-auto pt-2">
+                        <button onClick={() => openStockModal(med, 'in')} className="flex justify-center gap-1.5 p-2.5 bg-emerald-50/80 text-emerald-700 rounded-xl border border-emerald-100/50 font-bold text-xs shadow-sm hover:bg-emerald-100"><PackagePlus size={16} /> รับเข้า</button>
+                        <button onClick={() => openStockModal(med, 'out')} className="flex justify-center gap-1.5 p-2.5 bg-red-50/80 text-red-700 rounded-xl border border-red-100/50 font-bold text-xs shadow-sm hover:bg-red-100"><PackageMinus size={16} /> ตัดจ่าย</button>
                         <button
                           onClick={() => openActionModal(med)}
-                          className={`col-span-2 flex justify-center gap-1.5 p-2.5 rounded-xl border font-bold text-xs shadow-sm transition-all ${getActionButtonState(med) ? 'bg-red-500 text-white border-red-500 hover:bg-red-600' : 'bg-red-50/80 text-red-700 border-red-100/50 hover:bg-red-100'}`}
+                          className={`flex justify-center gap-1.5 p-2.5 rounded-xl border font-bold text-xs shadow-sm transition-all ${getActionButtonState(med) ? 'bg-red-500 text-white border-red-500 hover:bg-red-600' : 'bg-red-50/80 text-red-700 border-red-100/50 hover:bg-red-100'}`}
                         >
                           <AlertTriangle size={16} /> {getActionButtonState(med) ? 'กำลังจัดการ' : 'ต้องจัดการ'}
                         </button>
-                        <button onClick={() => openPendingPatientModal(med)} className="flex justify-center gap-1.5 p-2.5 bg-violet-50/80 text-violet-700 rounded-xl border border-violet-100/50 font-bold text-xs shadow-sm hover:bg-violet-100"><ClipboardList size={16} /> ค้างจ่ายคนไข้</button>
-                        <button onClick={() => openStockModal(med, 'in')} className="flex justify-center gap-1.5 p-2.5 bg-emerald-50/80 text-emerald-700 rounded-xl border border-emerald-100/50 font-bold text-xs shadow-sm hover:bg-emerald-100"><PackagePlus size={16} /> รับเข้า</button>
-                        <button onClick={() => openStockModal(med, 'out')} className="flex justify-center gap-1.5 p-2.5 bg-red-50/80 text-red-700 rounded-xl border border-red-100/50 font-bold text-xs shadow-sm hover:bg-red-100"><PackageMinus size={16} /> ตัดจ่าย</button>
+                        <button onClick={() => openPendingPatientModal(med)} className="flex justify-center gap-1.5 p-2.5 bg-violet-50/80 text-violet-700 rounded-xl border border-violet-100/50 font-bold text-xs shadow-sm hover:bg-violet-100"><ClipboardList size={16} /> ค้างจ่ายผู้ป่วย</button>
                     </div>
                   )}
                 </div>
@@ -1626,20 +1646,20 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                 })}
               </div>
 
-              <div className="pt-3 border-t border-slate-100 text-right">
-                <button onClick={() => { setIsActionDashboardOpen(false); openPendingPatientModal(); }} className="text-xs font-bold text-violet-600 hover:text-violet-700">ไปค้างจ่ายยาให้คนไข้ →</button>
+              <div className="pt-3 border-t border-slate-100 flex justify-end">
+                <button onClick={() => { setIsActionDashboardOpen(false); openNewActionModal(); }} className="bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5"><Plus size={15}/> เพิ่มยาที่ต้องจัดการ</button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Modal: Dashboard ค้างจ่ายคนไข้ */}
+        {/* Modal: Dashboard ค้างจ่ายผู้ป่วย */}
         {isPendingPatientDashboardOpen && session && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[82]">
             <div className="bg-white/95 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-5xl p-6 relative flex flex-col max-h-[90vh]">
               <div className="flex justify-between items-center pb-4 border-b border-slate-100">
                 <div>
-                  <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><ClipboardList className="text-violet-600" size={22}/> ค้างจ่ายคนไข้</h2>
+                  <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><ClipboardList className="text-violet-600" size={22}/> ค้างจ่ายผู้ป่วย</h2>
                   <p className="text-xs text-slate-500 mt-1">รายการยาที่ค้างจ่ายให้ผู้ป่วย และนัดหมายครั้งถัดไป</p>
                 </div>
                 <button onClick={() => setIsPendingPatientDashboardOpen(false)} className="p-1 hover:bg-slate-100 rounded-xl"><X size={20} className="text-slate-400"/></button>
@@ -1674,28 +1694,52 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex justify-end">
-                <button onClick={() => openPendingPatientModal()} className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5"><Plus size={15}/> เพิ่มค้างจ่ายคนไข้</button>
+                <button onClick={() => openPendingPatientModal()} className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5"><Plus size={15}/> เพิ่มค้างจ่ายผู้ป่วย</button>
               </div>
             </div>
           </div>
         )}
 
         {/* Modal: เพิ่มรายการยาที่ต้องจัดการ */}
-        {isActionModalOpen && session && actionTargetMed && (
+        {isActionModalOpen && session && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[84]">
             <div className="bg-white/95 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-md p-6 relative">
               <button onClick={() => setIsActionModalOpen(false)} className="absolute top-4 right-4 p-1 hover:bg-slate-100 rounded-xl"><X size={20} className="text-slate-400"/></button>
-              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-1"><AlertTriangle className="text-red-600" size={20}/> ยาที่ต้องจัดการ</h2>
-              <div className="text-sm font-extrabold text-slate-800 mb-4">{actionTargetMed.name}</div>
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-1"><AlertTriangle className="text-red-600" size={20}/> เพิ่มยาที่ต้องจัดการ</h2>
+              {actionTargetMed ? (
+                <div className="text-sm font-extrabold text-slate-800 mb-4">{actionTargetMed.name}</div>
+              ) : (
+                <div className="mb-4">
+                  <label className="block text-xs font-bold text-slate-600 mb-1">เลือกยา *</label>
+                  <input
+                    type="text"
+                    required
+                    list="action-medicine-options"
+                    value={actionMedicineSearch}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setActionMedicineSearch(value);
+                      const matched = medicines.find((m: any) => String(m.name || '').trim().toLowerCase() === value.trim().toLowerCase());
+                      setActionTargetMed(matched || null);
+                    }}
+                    placeholder="พิมพ์ชื่อยาเพื่อค้นหา..."
+                    className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none"
+                  />
+                  <datalist id="action-medicine-options">
+                    {medicines.map((med: any) => <option key={med.id} value={med.name} />)}
+                  </datalist>
+                </div>
+              )}
               <form onSubmit={handleCreateActionItem} className="space-y-3">
-                <div className="bg-slate-50 rounded-xl p-3 text-xs flex justify-between"><span className="text-slate-500">สต็อกปัจจุบัน</span><span className="font-bold text-slate-800">{getCurrentMedicineStock(actionTargetMed)} หน่วย</span></div>
+                <div className="bg-slate-50 rounded-xl p-3 text-xs flex justify-between"><span className="text-slate-500">สต็อกปัจจุบัน</span><span className="font-bold text-slate-800">{actionTargetMed ? `${getCurrentMedicineStock(actionTargetMed)} หน่วย` : 'กรุณาเลือกยา'}</span></div>
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">เหตุผล *</label>
                   <select required className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none" value={actionReason} onChange={(e) => setActionReason(e.target.value)}>
+                    <option>รอ EXP แล้วส่งคืนคลัง</option>
+                    <option>รอคลังยืมยามาจากที่อื่น</option>
+                    <option>รอ EXP ส่งคืนไม่ได้</option>
                     <option>คาดว่ายาไม่พอใช้</option>
                     <option>ต้องเบิกฉุกเฉิน</option>
-                    <option>ต้องสั่งซื้อเพิ่ม</option>
-                    <option>ต้องยืมจากหน่วยงานอื่น</option>
                     <option>อื่น ๆ</option>
                   </select>
                 </div>
@@ -1705,7 +1749,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">หมายเหตุ</label>
-                  <textarea className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none min-h-[90px]" value={actionNote} onChange={(e) => setActionNote(e.target.value)} placeholder="เช่น ต้องเบิกฉุกเฉินก่อนรอบปกติ" />
+                  <textarea className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none min-h-[90px]" value={actionNote} onChange={(e) => setActionNote(e.target.value)} placeholder="รายละเอียดจากการประสานงานกับคลังยา" />
                 </div>
                 <button type="submit" disabled={actionSubmitting} className="w-full bg-red-500 hover:bg-red-600 text-white p-3.5 rounded-xl font-bold shadow-md disabled:opacity-60">{actionSubmitting ? "กำลังบันทึก..." : "ยืนยัน: ต้องจัดการ"}</button>
               </form>
@@ -1713,26 +1757,39 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           </div>
         )}
 
-        {/* Modal: เพิ่มรายการค้างจ่ายคนไข้ */}
+        {/* Modal: เพิ่มรายการค้างจ่ายผู้ป่วย */}
         {isPendingPatientModalOpen && session && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[84]">
             <div className="bg-white/95 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto">
               <button onClick={() => { setIsPendingPatientModalOpen(false); resetPendingPatientForm(); }} className="absolute top-4 right-4 p-1 hover:bg-slate-100 rounded-xl"><X size={20} className="text-slate-400"/></button>
-              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-4"><ClipboardList className="text-violet-600" size={20}/> เพิ่มค้างจ่ายยาให้คนไข้</h2>
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-4"><ClipboardList className="text-violet-600" size={20}/> เพิ่มค้างจ่ายยาให้ผู้ป่วย</h2>
               <form onSubmit={handleCreatePendingPatient} className="space-y-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">ยา *</label>
-                  <select required className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none" value={pendingPatientMedicineId} onChange={(e) => setPendingPatientMedicineId(e.target.value)}>
-                    <option value="">-- เลือกยา --</option>
-                    {medicines.map((med: any) => <option key={med.id} value={med.id}>{med.name}</option>)}
-                  </select>
+                  <input
+                    type="text"
+                    required
+                    list="pending-medicine-options"
+                    value={pendingPatientMedicineSearch}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setPendingPatientMedicineSearch(value);
+                      const matched = medicines.find((m: any) => String(m.name || '').trim().toLowerCase() === value.trim().toLowerCase());
+                      setPendingPatientMedicineId(matched ? String(matched.id) : "");
+                    }}
+                    placeholder="พิมพ์ชื่อยาเพื่อค้นหา..."
+                    className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none"
+                  />
+                  <datalist id="pending-medicine-options">
+                    {medicines.map((med: any) => <option key={med.id} value={med.name} />)}
+                  </datalist>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">HN *</label>
                   <input type="text" required className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none" value={pendingPatientHN} onChange={(e) => setPendingPatientHN(e.target.value)} placeholder="เช่น 123456" />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">คนไข้ *</label>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">ผู้ป่วย *</label>
                   <input type="text" required className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none" value={pendingPatientName} onChange={(e) => setPendingPatientName(e.target.value)} placeholder="ชื่อ-นามสกุล" />
                 </div>
                 <div>
