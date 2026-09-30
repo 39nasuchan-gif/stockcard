@@ -315,9 +315,13 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
 
   // ===== ระบบยาที่ต้องจัดการ / ค้างจ่ายผู้ป่วย =====
   const [actionItems, setActionItems] = useState<any[]>([]);
+  const [actionHistoryItems, setActionHistoryItems] = useState<any[]>([]);
   const [pendingPatientItems, setPendingPatientItems] = useState<any[]>([]);
+  const [pendingPatientHistoryItems, setPendingPatientHistoryItems] = useState<any[]>([]);
   const [isActionDashboardOpen, setIsActionDashboardOpen] = useState(false);
   const [isPendingPatientDashboardOpen, setIsPendingPatientDashboardOpen] = useState(false);
+  const [actionDashboardMode, setActionDashboardMode] = useState<'open' | 'history'>('open');
+  const [pendingPatientDashboardMode, setPendingPatientDashboardMode] = useState<'pending' | 'history'>('pending');
 
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [actionTargetMed, setActionTargetMed] = useState<any>(null);
@@ -442,16 +446,27 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   // ===== โหลดรายการยาที่ต้องจัดการ / ค้างจ่ายผู้ป่วย =====
   const fetchManagementItems = async () => {
     try {
-      const [{ data: actionData, error: actionError }, { data: pendingData, error: pendingError }] = await Promise.all([
+      const [
+        { data: actionData, error: actionError },
+        { data: actionHistoryData, error: actionHistoryError },
+        { data: pendingData, error: pendingError },
+        { data: pendingHistoryData, error: pendingHistoryError }
+      ] = await Promise.all([
         supabase.from("medicine_action_items").select("*").eq("status", "open").order("created_at", { ascending: false }),
-        supabase.from("patient_pending_medicines").select("*").eq("status", "pending").order("next_appointment", { ascending: true, nullsFirst: false }).order("created_at", { ascending: false })
+        supabase.from("medicine_action_items").select("*").eq("status", "closed").order("closed_at", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }),
+        supabase.from("patient_pending_medicines").select("*").eq("status", "pending").order("next_appointment", { ascending: true, nullsFirst: false }).order("created_at", { ascending: false }),
+        supabase.from("patient_pending_medicines").select("*").eq("status", "completed").order("completed_at", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false })
       ]);
 
       if (actionError) throw actionError;
+      if (actionHistoryError) throw actionHistoryError;
       if (pendingError) throw pendingError;
+      if (pendingHistoryError) throw pendingHistoryError;
 
       setActionItems(actionData || []);
+      setActionHistoryItems(actionHistoryData || []);
       setPendingPatientItems(pendingData || []);
+      setPendingPatientHistoryItems(pendingHistoryData || []);
     } catch (e: any) {
       console.error("โหลดรายการจัดการยาไม่สำเร็จ:", e);
     }
@@ -665,6 +680,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const openActionModal = (med: any) => {
     const existing = actionItems.find((item: any) => String(item.medicine_id) === String(med.id));
     if (existing) {
+      setActionDashboardMode('open');
       setIsActionDashboardOpen(true);
       return;
     }
@@ -1312,10 +1328,10 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto mt-2 xl:mt-0">
             {session ? (
               <>
-                <button onClick={() => setIsActionDashboardOpen(true)} className="flex items-center justify-center gap-1.5 bg-red-50/80 text-red-700 border border-red-200/50 hover:bg-red-100 px-3 py-2 rounded-xl font-bold text-xs md:text-sm shadow-sm transition-all">
+                <button onClick={() => { setActionDashboardMode('open'); setIsActionDashboardOpen(true); }} className="flex items-center justify-center gap-1.5 bg-red-50/80 text-red-700 border border-red-200/50 hover:bg-red-100 px-3 py-2 rounded-xl font-bold text-xs md:text-sm shadow-sm transition-all">
                   <AlertTriangle size={16} /> ต้องจัดการ <span className="min-w-5 px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] leading-4">{actionItems.length}</span>
                 </button>
-                <button onClick={() => setIsPendingPatientDashboardOpen(true)} className="flex items-center justify-center gap-1.5 bg-violet-50/80 text-violet-700 border border-violet-200/50 hover:bg-violet-100 px-3 py-2 rounded-xl font-bold text-xs md:text-sm shadow-sm transition-all">
+                <button onClick={() => { setPendingPatientDashboardMode('pending'); setIsPendingPatientDashboardOpen(true); }} className="flex items-center justify-center gap-1.5 bg-violet-50/80 text-violet-700 border border-violet-200/50 hover:bg-violet-100 px-3 py-2 rounded-xl font-bold text-xs md:text-sm shadow-sm transition-all">
                   <ClipboardList size={16} /> ค้างจ่าย <span className="min-w-5 px-1.5 py-0.5 rounded-full bg-violet-500 text-white text-[10px] leading-4">{pendingPatientItems.length}</span>
                 </button>
                 <button onClick={() => setIsVisitorMainModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><MessageSquareText size={16} /> โน้ตผู้มาเยือน</button>
@@ -1613,41 +1629,74 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
               <div className="flex justify-between items-center pb-4 border-b border-slate-100">
                 <div>
                   <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><AlertTriangle className="text-red-600" size={22}/> ยาที่ต้องจัดการ</h2>
-                  <p className="text-xs text-slate-500 mt-1">รายการที่ผู้เบิกประเมินแล้วว่าต้องดำเนินการ ไม่จำเป็นต้องรอให้สต็อกเป็น 0</p>
+                  <p className="text-xs text-slate-500 mt-1">รายการปัจจุบันและประวัติรายการที่ดำเนินการแล้ว</p>
                 </div>
                 <button onClick={() => setIsActionDashboardOpen(false)} className="p-1 hover:bg-slate-100 rounded-xl"><X size={20} className="text-slate-400"/></button>
               </div>
 
+              <div className="flex gap-2 py-4 border-b border-slate-100 shrink-0">
+                <button onClick={() => setActionDashboardMode('open')} className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all ${actionDashboardMode === 'open' ? 'bg-red-500 text-white border-red-500 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+                  รายการปัจจุบัน <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${actionDashboardMode === 'open' ? 'bg-white/20 text-white' : 'bg-red-50 text-red-600'}`}>{actionItems.length}</span>
+                </button>
+                <button onClick={() => setActionDashboardMode('history')} className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all ${actionDashboardMode === 'history' ? 'bg-slate-700 text-white border-slate-700 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+                  ประวัติย้อนหลัง <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${actionDashboardMode === 'history' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>{actionHistoryItems.length}</span>
+                </button>
+              </div>
+
               <div className="flex-1 overflow-y-auto py-4 space-y-3">
-                {actionItems.length === 0 ? (
-                  <div className="text-center py-14 text-slate-400 font-medium">ยังไม่มีรายการยาที่ต้องจัดการ 🎉</div>
-                ) : actionItems.map((item: any) => {
-                  const med = getMedicineById(item.medicine_id);
-                  const currentStock = getCurrentMedicineStock(med);
-                  return (
-                    <div key={item.id} className="bg-red-50/70 border border-red-100 rounded-2xl p-4 shadow-sm">
-                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="font-extrabold text-slate-800 text-base">{med?.name || `ยา #${item.medicine_id}`}</div>
-                          <div className="text-xs text-slate-500 mt-1">รหัส: {med?.hosxp_icode || "-"} • ตู้: {med ? getCategoryName(med.cabinet_category) : "-"}</div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-xs">
-                            <div className="bg-white/80 rounded-xl px-3 py-2 border border-white"><span className="text-slate-500">คงเหลือปัจจุบัน:</span> <span className={`font-bold ${currentStock > 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatBoxString(currentStock, Number(med?.medicine_lots?.[0]?.pack_size) || 1, med?.medicine_lots?.[0]?.unit_name || "'s")}</span></div>
-                            <div className="bg-white/80 rounded-xl px-3 py-2 border border-white"><span className="text-slate-500">เหตุผล:</span> <span className="font-bold text-red-700">{item.reason}</span></div>
-                            {item.required_quantity !== null && item.required_quantity !== undefined && <div className="bg-white/80 rounded-xl px-3 py-2 border border-white"><span className="text-slate-500">จำนวนที่ต้องการ:</span> <span className="font-bold text-blue-700">{item.required_quantity}</span></div>}
-                            <div className="bg-white/80 rounded-xl px-3 py-2 border border-white"><span className="text-slate-500">แจ้งเมื่อ:</span> <span className="font-bold text-slate-700">{formatHistoryDate(item.created_at)}</span></div>
+                {actionDashboardMode === 'open' ? (
+                  actionItems.length === 0 ? (
+                    <div className="text-center py-14 text-slate-400 font-medium">ยังไม่มีรายการยาที่ต้องจัดการ 🎉</div>
+                  ) : actionItems.map((item: any) => {
+                    const med = getMedicineById(item.medicine_id);
+                    const currentStock = getCurrentMedicineStock(med);
+                    return (
+                      <div key={item.id} className="bg-red-50/70 border border-red-100 rounded-2xl p-4 shadow-sm">
+                        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="font-extrabold text-slate-800 text-base">{med?.name || `ยา #${item.medicine_id}`}</div>
+                            <div className="text-xs text-slate-500 mt-1">รหัส: {med?.hosxp_icode || "-"} • ตู้: {med ? getCategoryName(med.cabinet_category) : "-"}</div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-xs">
+                              <div className="bg-white/80 rounded-xl px-3 py-2 border border-white"><span className="text-slate-500">คงเหลือปัจจุบัน:</span> <span className={`font-bold ${currentStock > 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatBoxString(currentStock, Number(med?.medicine_lots?.[0]?.pack_size) || 1, med?.medicine_lots?.[0]?.unit_name || "'s")}</span></div>
+                              <div className="bg-white/80 rounded-xl px-3 py-2 border border-white"><span className="text-slate-500">เหตุผล:</span> <span className="font-bold text-red-700">{item.reason}</span></div>
+                              {item.required_quantity !== null && item.required_quantity !== undefined && <div className="bg-white/80 rounded-xl px-3 py-2 border border-white"><span className="text-slate-500">จำนวนที่ต้องการ:</span> <span className="font-bold text-blue-700">{item.required_quantity}</span></div>}
+                              <div className="bg-white/80 rounded-xl px-3 py-2 border border-white"><span className="text-slate-500">แจ้งเมื่อ:</span> <span className="font-bold text-slate-700">{formatHistoryDate(item.created_at)}</span></div>
+                            </div>
+                            {item.note && <div className="mt-2 text-xs text-slate-600 bg-white/70 rounded-xl p-3 border border-white">หมายเหตุ: {item.note}</div>}
+                            <div className="text-[10px] text-slate-400 mt-2">ผู้แจ้ง: {item.created_by || "-"}</div>
                           </div>
-                          {item.note && <div className="mt-2 text-xs text-slate-600 bg-white/70 rounded-xl p-3 border border-white">หมายเหตุ: {item.note}</div>}
-                          <div className="text-[10px] text-slate-400 mt-2">ผู้แจ้ง: {item.created_by || "-"}</div>
+                          <button onClick={() => handleCloseActionItem(item.id)} className="shrink-0 flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm"><Check size={15}/> ปิดรายการ</button>
                         </div>
-                        <button onClick={() => handleCloseActionItem(item.id)} className="shrink-0 flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm"><Check size={15}/> ปิดรายการ</button>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                ) : (
+                  actionHistoryItems.length === 0 ? (
+                    <div className="text-center py-14 text-slate-400 font-medium">ยังไม่มีประวัติยาที่ต้องจัดการ</div>
+                  ) : actionHistoryItems.map((item: any) => {
+                    const med = getMedicineById(item.medicine_id);
+                    return (
+                      <div key={item.id} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 shadow-sm">
+                        <div className="flex flex-col gap-3">
+                          <div className="font-extrabold text-slate-800 text-base">{med?.name || `ยา #${item.medicine_id}`}</div>
+                          <div className="text-xs text-slate-500">รหัส: {med?.hosxp_icode || "-"} • ตู้: {med ? getCategoryName(med.cabinet_category) : "-"}</div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                            <div className="bg-white rounded-xl px-3 py-2 border border-slate-100"><span className="text-slate-500">เหตุผล:</span> <span className="font-bold text-slate-700">{item.reason}</span></div>
+                            {item.required_quantity !== null && item.required_quantity !== undefined && <div className="bg-white rounded-xl px-3 py-2 border border-slate-100"><span className="text-slate-500">จำนวนที่ต้องการ:</span> <span className="font-bold text-blue-700">{item.required_quantity}</span></div>}
+                            <div className="bg-white rounded-xl px-3 py-2 border border-slate-100"><span className="text-slate-500">แจ้งเมื่อ:</span> <span className="font-bold text-slate-700">{formatHistoryDate(item.created_at)}</span></div>
+                            <div className="bg-white rounded-xl px-3 py-2 border border-slate-100"><span className="text-slate-500">ปิดเมื่อ:</span> <span className="font-bold text-emerald-700">{formatHistoryDate(item.closed_at)}</span></div>
+                          </div>
+                          {item.note && <div className="text-xs text-slate-600 bg-white rounded-xl p-3 border border-slate-100">หมายเหตุ: {item.note}</div>}
+                          <div className="text-[10px] text-slate-400">ผู้แจ้ง: {item.created_by || "-"} • ปิดโดย: {item.closed_by || "-"}</div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex justify-end">
-                <button onClick={() => { setIsActionDashboardOpen(false); openNewActionModal(); }} className="bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5"><Plus size={15}/> เพิ่มยาที่ต้องจัดการ</button>
+                {actionDashboardMode === 'open' && <button onClick={() => { setIsActionDashboardOpen(false); openNewActionModal(); }} className="bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5"><Plus size={15}/> เพิ่มยาที่ต้องจัดการ</button>}
               </div>
             </div>
           </div>
@@ -1660,41 +1709,74 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
               <div className="flex justify-between items-center pb-4 border-b border-slate-100">
                 <div>
                   <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><ClipboardList className="text-violet-600" size={22}/> ค้างจ่ายผู้ป่วย</h2>
-                  <p className="text-xs text-slate-500 mt-1">รายการยาที่ค้างจ่ายให้ผู้ป่วย และนัดหมายครั้งถัดไป</p>
+                  <p className="text-xs text-slate-500 mt-1">รายการปัจจุบันและประวัติการค้างจ่ายที่ดำเนินการเสร็จแล้ว</p>
                 </div>
                 <button onClick={() => setIsPendingPatientDashboardOpen(false)} className="p-1 hover:bg-slate-100 rounded-xl"><X size={20} className="text-slate-400"/></button>
               </div>
 
+              <div className="flex gap-2 py-4 border-b border-slate-100 shrink-0">
+                <button onClick={() => setPendingPatientDashboardMode('pending')} className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all ${pendingPatientDashboardMode === 'pending' ? 'bg-violet-600 text-white border-violet-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+                  ค้างอยู่ <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${pendingPatientDashboardMode === 'pending' ? 'bg-white/20 text-white' : 'bg-violet-50 text-violet-600'}`}>{pendingPatientItems.length}</span>
+                </button>
+                <button onClick={() => setPendingPatientDashboardMode('history')} className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all ${pendingPatientDashboardMode === 'history' ? 'bg-slate-700 text-white border-slate-700 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+                  ประวัติย้อนหลัง <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${pendingPatientDashboardMode === 'history' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>{pendingPatientHistoryItems.length}</span>
+                </button>
+              </div>
+
               <div className="flex-1 overflow-y-auto py-4 space-y-3">
-                {pendingPatientItems.length === 0 ? (
-                  <div className="text-center py-14 text-slate-400 font-medium">ไม่มีรายการค้างจ่าย 🎉</div>
-                ) : pendingPatientItems.map((item: any) => {
-                  const med = getMedicineById(item.medicine_id);
-                  const isAppointmentToday = item.next_appointment && item.next_appointment <= new Date().toLocaleDateString('en-CA');
-                  const isOverdueAppointment = item.next_appointment && item.next_appointment < new Date().toLocaleDateString('en-CA');
-                  return (
-                    <div key={item.id} className={`border rounded-2xl p-4 shadow-sm ${isOverdueAppointment ? 'bg-red-50/80 border-red-200' : isAppointmentToday ? 'bg-amber-50/80 border-amber-200' : 'bg-violet-50/50 border-violet-100'}`}>
-                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="font-extrabold text-slate-800 text-base">{item.patient_hn} : {item.patient_name}</div>
-                          <div className="text-sm font-bold text-violet-700 mt-1">💊 {med?.name || `ยา #${item.medicine_id}`}</div>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3 text-xs">
-                            <div className="bg-white/80 rounded-xl px-3 py-2 border border-white"><span className="text-slate-500">ค้าง:</span> <span className="font-bold text-red-600">{item.quantity}</span></div>
-                            <div className="bg-white/80 rounded-xl px-3 py-2 border border-white"><span className="text-slate-500">สาเหตุ:</span> <span className="font-bold text-slate-700">{item.reason}</span></div>
-                            <div className="bg-white/80 rounded-xl px-3 py-2 border border-white"><span className="text-slate-500">นัดครั้งถัดไป:</span> <span className={`font-bold ${isOverdueAppointment ? 'text-red-600' : isAppointmentToday ? 'text-amber-700' : 'text-slate-700'}`}>{formatThaiShortDate(item.next_appointment)}</span></div>
+                {pendingPatientDashboardMode === 'pending' ? (
+                  pendingPatientItems.length === 0 ? (
+                    <div className="text-center py-14 text-slate-400 font-medium">ไม่มีรายการค้างจ่าย 🎉</div>
+                  ) : pendingPatientItems.map((item: any) => {
+                    const med = getMedicineById(item.medicine_id);
+                    const isAppointmentToday = item.next_appointment && item.next_appointment <= new Date().toLocaleDateString('en-CA');
+                    const isOverdueAppointment = item.next_appointment && item.next_appointment < new Date().toLocaleDateString('en-CA');
+                    return (
+                      <div key={item.id} className={`border rounded-2xl p-4 shadow-sm ${isOverdueAppointment ? 'bg-red-50/80 border-red-200' : isAppointmentToday ? 'bg-amber-50/80 border-amber-200' : 'bg-violet-50/50 border-violet-100'}`}>
+                        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="font-extrabold text-slate-800 text-base">{item.patient_hn} : {item.patient_name}</div>
+                            <div className="text-sm font-bold text-violet-700 mt-1">💊 {med?.name || `ยา #${item.medicine_id}`}</div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3 text-xs">
+                              <div className="bg-white/80 rounded-xl px-3 py-2 border border-white"><span className="text-slate-500">ค้าง:</span> <span className="font-bold text-red-600">{item.quantity}</span></div>
+                              <div className="bg-white/80 rounded-xl px-3 py-2 border border-white"><span className="text-slate-500">สาเหตุ:</span> <span className="font-bold text-slate-700">{item.reason}</span></div>
+                              <div className="bg-white/80 rounded-xl px-3 py-2 border border-white"><span className="text-slate-500">นัดครั้งถัดไป:</span> <span className={`font-bold ${isOverdueAppointment ? 'text-red-600' : isAppointmentToday ? 'text-amber-700' : 'text-slate-700'}`}>{formatThaiShortDate(item.next_appointment)}</span></div>
+                            </div>
+                            {item.note && <div className="mt-2 text-xs text-slate-600 bg-white/70 rounded-xl p-3 border border-white">หมายเหตุ: {item.note}</div>}
+                            <div className="text-[10px] text-slate-400 mt-2">บันทึกโดย: {item.created_by || "-"} • {formatHistoryDate(item.created_at)}</div>
                           </div>
-                          {item.note && <div className="mt-2 text-xs text-slate-600 bg-white/70 rounded-xl p-3 border border-white">หมายเหตุ: {item.note}</div>}
-                          <div className="text-[10px] text-slate-400 mt-2">บันทึกโดย: {item.created_by || "-"} • {formatHistoryDate(item.created_at)}</div>
+                          <button onClick={() => handleClosePendingPatient(item.id)} className="shrink-0 flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm"><Check size={15}/> ดำเนินการเสร็จ / ปิด</button>
                         </div>
-                        <button onClick={() => handleClosePendingPatient(item.id)} className="shrink-0 flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm"><Check size={15}/> ดำเนินการเสร็จ / ปิด</button>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                ) : (
+                  pendingPatientHistoryItems.length === 0 ? (
+                    <div className="text-center py-14 text-slate-400 font-medium">ยังไม่มีประวัติค้างจ่ายผู้ป่วย</div>
+                  ) : pendingPatientHistoryItems.map((item: any) => {
+                    const med = getMedicineById(item.medicine_id);
+                    return (
+                      <div key={item.id} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 shadow-sm">
+                        <div className="flex flex-col gap-3">
+                          <div className="font-extrabold text-slate-800 text-base">{item.patient_hn} : {item.patient_name}</div>
+                          <div className="text-sm font-bold text-violet-700">💊 {med?.name || `ยา #${item.medicine_id}`}</div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                            <div className="bg-white rounded-xl px-3 py-2 border border-slate-100"><span className="text-slate-500">จำนวน:</span> <span className="font-bold text-red-600">{item.quantity}</span></div>
+                            <div className="bg-white rounded-xl px-3 py-2 border border-slate-100"><span className="text-slate-500">สาเหตุ:</span> <span className="font-bold text-slate-700">{item.reason}</span></div>
+                            <div className="bg-white rounded-xl px-3 py-2 border border-slate-100"><span className="text-slate-500">นัดครั้งถัดไป:</span> <span className="font-bold text-slate-700">{formatThaiShortDate(item.next_appointment)}</span></div>
+                            <div className="bg-white rounded-xl px-3 py-2 border border-slate-100"><span className="text-slate-500">ดำเนินการเสร็จ:</span> <span className="font-bold text-emerald-700">{formatHistoryDate(item.completed_at)}</span></div>
+                          </div>
+                          {item.note && <div className="text-xs text-slate-600 bg-white rounded-xl p-3 border border-slate-100">หมายเหตุ: {item.note}</div>}
+                          <div className="text-[10px] text-slate-400">บันทึกโดย: {item.created_by || "-"} • ดำเนินการโดย: {item.completed_by || "-"}</div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex justify-end">
-                <button onClick={() => openPendingPatientModal()} className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5"><Plus size={15}/> เพิ่มค้างจ่ายผู้ป่วย</button>
+                {pendingPatientDashboardMode === 'pending' && <button onClick={() => openPendingPatientModal()} className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5"><Plus size={15}/> เพิ่มค้างจ่ายผู้ป่วย</button>}
               </div>
             </div>
           </div>
