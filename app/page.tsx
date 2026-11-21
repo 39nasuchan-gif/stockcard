@@ -273,6 +273,10 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const [isReportModalOpen, setIsReportModalOpen] = useState(false); 
   const [reportTargetCategory, setReportTargetCategory] = useState<number | "all">("all"); 
   const [reportTargetId, setReportTargetId] = useState("all"); 
+  const todayForReport = new Date().toLocaleDateString("en-CA");
+  const [reportStartDate, setReportStartDate] = useState("2000-01-01");
+  const [reportEndDate, setReportEndDate] = useState(todayForReport);
+  const [reportPaperSize, setReportPaperSize] = useState<"A4" | "A5">("A4");
   const [isGeneratingReport, setIsGeneratingReport] = useState(false); 
   const [showPrintView, setShowPrintView] = useState(false); 
   const [printData, setPrintData] = useState<any>({});
@@ -1143,9 +1147,26 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   };
 
   const handleGenerateReport = async () => { 
+    if (!reportStartDate || !reportEndDate) {
+      alert("กรุณาเลือกวันที่เริ่มต้นและวันที่สิ้นสุด");
+      return;
+    }
+    const [startYear, startMonth, startDay] = reportStartDate.split("-").map(Number);
+    const [endYear, endMonth, endDay] = reportEndDate.split("-").map(Number);
+    const startDate = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
+    const endDate = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
+    if (startDate.getTime() > endDate.getTime()) {
+      alert("วันที่เริ่มต้นต้องไม่มากกว่าวันที่สิ้นสุด");
+      return;
+    }
+
     setIsGeneratingReport(true); 
     try { 
-      let query = supabase.from("stock_transactions").select("*").eq("status", "completed").order("created_at", { ascending: true }); 
+      let query = supabase.from("stock_transactions").select("*")
+        .eq("status", "completed")
+        .gte("created_at", startDate.toISOString())
+        .lte("created_at", endDate.toISOString())
+        .order("created_at", { ascending: true }); 
       if (reportTargetId !== "all") query = query.eq("medicine_id", reportTargetId); 
       const { data: txData, error } = await query; 
       if (error) throw error; 
@@ -1154,7 +1175,9 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       const medsToProcess = medicines.filter(m => reportTargetCategory === "all" || String(m.cabinet_category) === String(reportTargetCategory)).filter(m => reportTargetId === "all" || m.id.toString() === reportTargetId); 
       
       medsToProcess.forEach(med => { 
-        const medTxs = (txData || []).filter(tx => tx.medicine_id.toString() === med.id.toString()); 
+        const medTxs = (txData || [])
+          .filter(tx => tx.medicine_id.toString() === med.id.toString())
+          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
         let runningBal = 0; 
         let lotBalances: Record<string, { exp: string, qty: number, packSize: number, unitName: string }> = {};
 
@@ -1185,10 +1208,19 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           }
           return { ...tx, balanceAfter: runningBal, amountText: formatPrintPack(tx.amount, pSize, pUnit), balanceText: formatPrintPack(runningBal, pSize, pUnit), lotBreakdown }; 
         }); 
-        grouped[med.id] = { medName: med.name, hosxp: med.hosxp_icode, note: med.note, transactions: processedTxs.reverse() }; 
+        grouped[med.id] = {
+          medName: med.name,
+          hosxp: med.hosxp_icode,
+          note: med.note,
+          transactions: processedTxs,
+          periodStart: reportStartDate,
+          periodEnd: reportEndDate
+        }; 
       }); 
       
-      setPrintData(grouped); setShowPrintView(true); setIsReportModalOpen(false); 
+      setPrintData(grouped);
+      setShowPrintView(true);
+      setIsReportModalOpen(false); 
     } catch(e: any) { alert("เกิดข้อผิดพลาดในการดึงข้อมูลรายงาน: " + e.message); } finally { setIsGeneratingReport(false); } 
   };
   
@@ -1232,8 +1264,26 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const pendingVisitorCount = visitorNotes.filter(n => n.status === 'visitor_note').length;
 
   if (showPrintView) return ( 
-    <div className="bg-white min-h-screen text-black print:p-0 p-8">
-      <div className="max-w-5xl mx-auto">
+    <div className={`stock-report-page bg-white min-h-screen text-black p-4 md:p-8 print:p-0`} data-paper-size={reportPaperSize}>
+      <style jsx global>{`
+        @page { size: ${reportPaperSize} portrait; margin: 10mm; }
+        @media print {
+          html, body { background: #fff !important; }
+          body { margin: 0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .stock-report-page { min-height: 0 !important; padding: 0 !important; background: #fff !important; }
+          .stock-report-inner { width: 100% !important; max-width: none !important; margin: 0 !important; }
+          .stock-report-sheet { margin: 0 !important; padding: 0 !important; border: 0 !important; box-shadow: none !important; break-after: page; page-break-after: always; }
+          .stock-report-sheet:last-child { break-after: auto; page-break-after: auto; }
+          .stock-report-sheet h1 { font-size: ${reportPaperSize === "A5" ? "15pt" : "18pt"} !important; }
+          .stock-report-sheet h2 { font-size: ${reportPaperSize === "A5" ? "12pt" : "15pt"} !important; }
+          .stock-report-sheet table { width: 100% !important; table-layout: fixed; font-size: ${reportPaperSize === "A5" ? "7pt" : "9pt"} !important; }
+          .stock-report-sheet th, .stock-report-sheet td { padding: ${reportPaperSize === "A5" ? "3px 4px" : "5px 6px"} !important; overflow-wrap: anywhere; }
+          .stock-report-sheet .stock-lot-breakdown { font-size: ${reportPaperSize === "A5" ? "6pt" : "8pt"} !important; white-space: normal !important; }
+          .stock-report-sheet thead { display: table-header-group; }
+          .stock-report-sheet tr { break-inside: avoid; page-break-inside: avoid; }
+        }
+      `}</style>
+      <div className="stock-report-inner max-w-5xl mx-auto">
         <div className="print:hidden flex justify-between mb-6 bg-gray-100 p-4 rounded-xl">
           <div><h1 className="text-xl font-bold">ตัวอย่างก่อนพิมพ์รายงาน</h1></div>
           <div className="flex gap-3">
@@ -1243,9 +1293,10 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         </div>
         <div className="print-content">
           {Object.values(printData).map((medData: any) => (
-            <div key={medData.medName} style={{ pageBreakAfter: 'always' }} className="mb-10 pb-4">
-              <h1 className="text-2xl font-bold text-center mb-2">รายงานประวัติการใช้ยา</h1>
-              <p className="text-center text-sm text-gray-600 mb-6">พิมพ์วันที่: {new Date().toLocaleString("th-TH")}</p>
+            <div key={medData.medName} className="stock-report-sheet mb-10 pb-4">
+              <h1 className="text-2xl font-bold text-center mb-2">Stock Card ({medData.medName})</h1>
+              <p className="text-center text-sm text-gray-600 mb-2">ช่วงวันที่ {formatThaiShortDate(medData.periodStart)} - {formatThaiShortDate(medData.periodEnd)}</p>
+              <p className="text-center text-xs text-gray-500 mb-5">พิมพ์วันที่: {new Date().toLocaleString("th-TH")}</p>
               <div className="mb-4 border-b-2 border-black pb-2">
                 <h2 className="text-xl font-bold text-black">{medData.medName}</h2>
                 <div className="text-sm text-black">รหัส HosXP: {medData.hosxp || "-"} | หมายเหตุ: {medData.note || "-"}</div>
@@ -1271,7 +1322,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                         <td className="border border-gray-400 p-2 text-center align-top">
                            <div className="text-black font-bold">{tx.balanceText}</div>
                            {tx.lotBreakdown && tx.lotBreakdown.length > 0 && (
-                             <div className="text-[10px] text-gray-700 font-medium mt-1 pt-1 border-t border-gray-300 text-left w-fit mx-auto leading-tight whitespace-nowrap">
+                             <div className="stock-lot-breakdown text-[10px] text-gray-700 font-medium mt-1 pt-1 border-t border-gray-300 text-left w-fit mx-auto leading-tight whitespace-nowrap">
                                 {tx.lotBreakdown.map((txt: string, i: number) => <div key={i}>• {txt}</div>)}
                              </div>
                            )}
@@ -2093,6 +2144,23 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                 <div className="border-t border-slate-200 pt-5">
                    <h3 className="text-sm font-bold text-slate-700 mb-3">พิมพ์รายงาน Stock Card (PDF)</h3>
                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium mb-1.5 text-slate-600">วันที่เริ่มต้น</label>
+                          <input type="date" value={reportStartDate} max={reportEndDate || undefined} onChange={(e) => setReportStartDate(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium mb-1.5 text-slate-600">วันที่สิ้นสุด</label>
+                          <input type="date" value={reportEndDate} min={reportStartDate || undefined} onChange={(e) => setReportEndDate(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5 text-slate-600">ขนาดกระดาษ</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button type="button" onClick={() => setReportPaperSize("A4")} className={`rounded-xl border p-3 text-sm font-semibold transition-colors ${reportPaperSize === "A4" ? "bg-blue-50 border-blue-400 text-blue-700" : "bg-white border-slate-200 text-slate-600"}`}>A4</button>
+                          <button type="button" onClick={() => setReportPaperSize("A5")} className={`rounded-xl border p-3 text-sm font-semibold transition-colors ${reportPaperSize === "A5" ? "bg-blue-50 border-blue-400 text-blue-700" : "bg-white border-slate-200 text-slate-600"}`}>A5</button>
+                        </div>
+                      </div>
                       <div><label className="block text-xs font-medium mb-1.5 text-slate-600">เลือกตู้ยา (Cabinet)</label><select className="w-full bg-white border border-slate-200 rounded-xl p-3 outline-none" value={reportTargetCategory} onChange={(e) => { setReportTargetCategory(e.target.value === "all" ? "all" : Number(e.target.value)); setReportTargetId("all"); }}><option value="all">-- ทุกตู้ยา --</option>{categoriesList?.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}</select></div>
                       <div><label className="block text-xs font-medium mb-1.5 text-slate-600">เลือกรายการยาที่ต้องการพิมพ์</label><select className="w-full bg-white border border-slate-200 rounded-xl p-3 outline-none" value={reportTargetId} onChange={(e) => setReportTargetId(e.target.value)}><option value="all">-- พิมพ์ทั้งหมด (ตามตู้) --</option>{medicines.filter(m => reportTargetCategory === "all" || String(m.cabinet_category) === String(reportTargetCategory)).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
                       <button onClick={handleGenerateReport} disabled={isGeneratingReport} className="w-full bg-blue-500 hover:bg-blue-600 text-white p-3 rounded-xl font-bold shadow-md transition-colors flex justify-center items-center gap-2 mt-2">{isGeneratingReport ? "รอสักครู่..." : <><Printer size={18}/> สร้าง PDF</>}</button>
