@@ -1448,7 +1448,10 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   if (showPrintView) return ( 
     <div className={`stock-report-page bg-white min-h-screen text-black p-4 md:p-8 print:p-0`} data-paper-size={reportPaperSize}>
       <style jsx global>{`
-        @page { size: ${reportPaperSize} landscape; margin: ${reportPaperSize === "A5" ? "6mm" : "8mm"}; }
+        @page {
+          size: ${reportPaperSize} ${reportPaperSize === "A4" ? "portrait" : "landscape"};
+          margin: ${reportPaperSize === "A5" ? "6mm" : "8mm"};
+        }
         @media print {
           html, body { background: #fff !important; }
           body { margin: 0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
