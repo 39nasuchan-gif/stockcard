@@ -1555,7 +1555,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
               <div className="medicine-label-divider" />
               <div className="medicine-label-hosxp">รหัส {med.hosxp_icode || "-"}</div>
               <div className="medicine-label-qr">
-                <QRCodeSVG value={`${baseUrl}/?id=${med.id}`} size={128} level="M" />
+                <QRCodeSVG value={`${baseUrl}/?id=${med.id}`} size={256} level="M" includeMargin />
               </div>
             </div>
           </article>
