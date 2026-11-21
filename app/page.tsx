@@ -738,7 +738,12 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       if (importExcelRows.length > 0) {
         const header = importExcelRows[0].map(normalizeHeader);
         Object.entries(aliases).forEach(([field, names]) => {
-          const found = header.findIndex(value => names.some(alias => normalizeHeader(alias) === value));
+          const found = header.findIndex(value =>
+            names.some(alias => {
+              const normalizedAlias = normalizeHeader(alias);
+              return value === normalizedAlias || (normalizedAlias.length >= 5 && value.includes(normalizedAlias));
+            })
+          );
           if (found >= 0) columnMap[field] = found;
         });
         hasHeader = columnMap.name !== undefined;
@@ -2560,7 +2565,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                 <div>
                   <label className="block text-xs font-medium mb-1.5 text-slate-600">หรือวางข้อมูลแบบเดิม (คั่นด้วยจุลภาค)</label>
                   <p className="text-[11px] text-slate-500 mb-2"><code className="bg-slate-100 p-1 rounded">ชื่อยา, รหัสHosXP, หมายเหตุ, รหัสตู้ยา, สต็อกขั้นต่ำ</code></p>
-                  <textarea rows={4} className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-blue-400 shadow-sm font-mono" placeholder="พาราสเซทตามอล, P01, ยาแก้ปวด, 1, 10&#10;อม็อกซี่ซิลลิน, A02, ยาปฏิชีวนะ, 1, 5" value={importText} onChange={(e) => setImportText(e.target.value)} />
+                  <textarea rows={4} className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-blue-400 shadow-sm font-mono" placeholder="พาราสเซทตามอล, P01, ยาแก้ปวด, 1, 10&#10;อม็อกซี่ซิลลิน, A02, ยาปฏิชีวนะ, 1, 5" value={importText} onChange={(e) => { setImportText(e.target.value); setImportExcelRows([]); setImportExcelFileName(""); }} />
                 </div>
                 {importExcelRows.length > 0 && (
                   <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
