@@ -299,6 +299,9 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   
   const [isImportModalOpen, setIsImportModalOpen] = useState(false); 
   const [importText, setImportText] = useState(""); 
+  const [importExcelRows, setImportExcelRows] = useState<any[][]>([]);
+  const [importExcelFileName, setImportExcelFileName] = useState("");
+  const [importDefaultCabinet, setImportDefaultCabinet] = useState("");
   const [importing, setImporting] = useState(false);
   
   const [isChangePwdModalOpen, setIsChangePwdModalOpen] = useState(false); 
@@ -498,6 +501,15 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   }, []);
 
   useEffect(() => {
+    if (
+      categoriesList.length > 0 &&
+      !categoriesList.some(category => String(category.id) === String(importDefaultCabinet))
+    ) {
+      setImportDefaultCabinet(String(categoriesList[0].id));
+    }
+  }, [categoriesList, importDefaultCabinet]);
+
+  useEffect(() => {
     if (categoriesList.length > 0 && selectedCategory !== "all") {
       const isCategoryExists = categoriesList.some(cat => String(cat.id) === String(selectedCategory));
       if (!isCategoryExists) {
@@ -664,22 +676,157 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     }
   };
 
+  const handleImportFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    if (!["xlsx", "xls", "csv"].includes(extension || "")) {
+      alert("รองรับไฟล์ Excel (.xlsx, .xls) และ CSV เท่านั้น");
+      event.target.value = "";
+      return;
+    }
+
+    try {
+      const XLSX = await import("xlsx");
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      if (!firstSheet) throw new Error("ไม่พบแผ่นงานในไฟล์");
+      const rows = XLSX.utils.sheet_to_json(firstSheet, {
+        header: 1,
+        defval: "",
+        raw: false
+      }) as any[][];
+      const validRows = rows.filter(row => row.some(cell => String(cell ?? "").trim() !== ""));
+      if (validRows.length === 0) throw new Error("ไม่พบข้อมูลในไฟล์");
+      setImportExcelRows(validRows);
+      setImportExcelFileName(file.name);
+      setImportText("");
+    } catch (error: any) {
+      alert("อ่านไฟล์ไม่สำเร็จ: " + (error?.message || "รูปแบบไฟล์ไม่ถูกต้อง"));
+      setImportExcelRows([]);
+      setImportExcelFileName("");
+    } finally {
+      event.target.value = "";
+    }
+  };
+
   const handleImportExcel = async () => {
-    if (!importText.trim()) return alert("กรุณาวางข้อมูล CSV หรือข้อความที่ต้องการนำเข้า"); 
+    if (!importExcelRows.length && !importText.trim()) {
+      return alert("กรุณาเลือกไฟล์ Excel หรือวางข้อมูล CSV ที่ต้องการนำเข้า");
+    }
+
     setImporting(true);
     try {
-      const lines = importText.trim().split("\n"); 
-      let count = 0;
-      for (let line of lines) { 
-        const parts = line.split(",").map(p => p.trim()); 
-        if (parts.length >= 1 && parts[0]) { 
-          const name = parts[0]; const hosxp_icode = parts[1] || ""; const note = parts[2] || ""; const cabinet_category = parts[3] || "1"; const min_stock = parseInt(parts[4]) || 0; 
-          await supabase.from("medicines").insert([{ name, hosxp_icode, note, cabinet_category, min_stock, is_available: true }]); 
-          count++; 
-        } 
+      const normalizeHeader = (value: any) => String(value ?? "")
+        .toLowerCase()
+        .replace(/[^a-z0-9\u0E00-\u0E7F]/g, "")
+        .trim();
+
+      const aliases = {
+        name: ["ชื่อยา", "รายการยา", "ชื่อเวชภัณฑ์", "medicine", "medicinename", "drug", "drugname", "name"],
+        hosxp: ["รหัสhosxp", "hosxpicode", "hosxpcode", "hosxp", "icode", "รหัสยา"],
+        note: ["หมายเหตุ", "รายละเอียด", "note", "remark", "description"],
+        cabinet: ["ตู้ยา", "ตู้", "รหัสตู้ยา", "หมวดหมู่ตู้ยา", "cabinet", "cabinetname", "cabinetcategory", "cabinetid", "category"],
+        minStock: ["สต็อกขั้นต่ำ", "จำนวนขั้นต่ำ", "minstock", "minimumstock", "safetystock"]
+      };
+
+      let rowsToImport: any[][] = [];
+      let columnMap: Record<string, number> = {};
+      let hasHeader = false;
+
+      if (importExcelRows.length > 0) {
+        const header = importExcelRows[0].map(normalizeHeader);
+        Object.entries(aliases).forEach(([field, names]) => {
+          const found = header.findIndex(value => names.some(alias => normalizeHeader(alias) === value));
+          if (found >= 0) columnMap[field] = found;
+        });
+        hasHeader = columnMap.name !== undefined;
+        rowsToImport = hasHeader ? importExcelRows.slice(1) : importExcelRows;
+      } else {
+        rowsToImport = importText.trim().split("\n").map(line => line.split(",").map(value => value.trim()));
       }
-      alert(`นำเข้าสำเร็จ ${count} รายการ!`); setIsImportModalOpen(false); setImportText(""); fetchMedicines();
-    } catch (e: any) { alert("นำเข้าไม่สำเร็จ: " + e.message); } finally { setImporting(false); }
+
+      const resolveCabinet = (value: any) => {
+        const input = String(value ?? "").trim();
+        if (!input) return "";
+        const byId = categoriesList.find(category => String(category.id) === input);
+        if (byId) return String(byId.id);
+        const normalized = normalizeHeader(input);
+        const byName = categoriesList.find(category => normalizeHeader(category.name) === normalized);
+        if (byName) return String(byName.id);
+        const cabinetNumber = normalized.replace(/^ตู้ยา?/, "");
+        const byNumber = categoriesList.find(category => String(category.id) === cabinetNumber);
+        return byNumber ? String(byNumber.id) : "";
+      };
+
+      const records: any[] = [];
+      let missingName = 0;
+      let unresolvedCabinet = 0;
+      rowsToImport.forEach(row => {
+        const valueAt = (field: string, fallbackIndex: number) => {
+          if (columnMap[field] !== undefined) return row[columnMap[field]];
+          return hasHeader ? "" : row[fallbackIndex];
+        };
+
+        const name = String(valueAt("name", 0) ?? "").trim();
+        if (!name) {
+          missingName++;
+          return;
+        }
+
+        const hosxp_icode = String(valueAt("hosxp", 1) ?? "").trim();
+        const note = String(valueAt("note", 2) ?? "").trim();
+        const cabinetValue = columnMap.cabinet !== undefined
+          ? row[columnMap.cabinet]
+          : (hasHeader ? "" : row[3]);
+        const cabinet_category = resolveCabinet(cabinetValue) || resolveCabinet(importDefaultCabinet);
+        const minStockValue = valueAt("minStock", 4);
+        const parsedMinStock = Number.parseInt(String(minStockValue ?? "0"), 10);
+        const min_stock = Number.isFinite(parsedMinStock) && parsedMinStock >= 0 ? parsedMinStock : 0;
+
+        if (!cabinet_category) {
+          unresolvedCabinet++;
+          return;
+        }
+
+        records.push({
+          name,
+          hosxp_icode,
+          note,
+          cabinet_category: Number(cabinet_category),
+          min_stock,
+          is_available: true
+        });
+      });
+
+      if (records.length === 0) {
+        throw new Error(
+          unresolvedCabinet > 0
+            ? `ไม่สามารถระบุตู้ยาได้ ${unresolvedCabinet} รายการ กรุณาเพิ่มคอลัมน์ตู้ยาใน Excel หรือเลือกตู้ยาสำรองก่อนนำเข้า`
+            : "ไม่พบแถวข้อมูลที่มีชื่อยา กรุณาตรวจสอบไฟล์และหัวคอลัมน์"
+        );
+      }
+
+      for (let index = 0; index < records.length; index += 100) {
+        const { error } = await supabase.from("medicines").insert(records.slice(index, index + 100));
+        if (error) throw error;
+      }
+
+      const skipped = missingName + unresolvedCabinet;
+      alert(
+        `นำเข้าสำเร็จ ${records.length} รายการ${skipped > 0 ? ` (ข้าม ${skipped} รายการที่ข้อมูลไม่ครบหรือตู้ยาไม่ตรง)` : ""}`
+      );
+      setIsImportModalOpen(false);
+      setImportText("");
+      setImportExcelRows([]);
+      setImportExcelFileName("");
+      await fetchMedicines();
+    } catch (e: any) {
+      alert("นำเข้าไม่สำเร็จ: " + (e?.message || "เกิดข้อผิดพลาด"));
+    } finally {
+      setImporting(false);
+    }
   };
 
   // ===== ยาที่ต้องจัดการ =====
@@ -2385,17 +2532,49 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           </div>
         )}
 
-        {/* Modal: นำเข้าข้อมูล (Import) */}
+        {/* Modal: นำเข้าข้อมูลยา */}
         {isImportModalOpen && session && (
           <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
             <div className="bg-white/90 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden p-6">
-               <div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Upload size={20}/> นำเข้าข้อมูลยา</h2><button onClick={() => setIsImportModalOpen(false)}><X size={20} className="text-slate-400" /></button></div>
-               <p className="text-xs text-slate-500 mb-3">รูปแบบข้อมูลแต่ละบรรทัด (คั่นด้วยจุลภาค comma): <br/><code className="bg-slate-100 p-1 rounded text-slate-700">ชื่อยา, รหัสHosXP, หมายเหตุ, รหัสตู้ยา(ตัวเลข), สต็อกขั้นต่ำ</code></p>
-               <textarea rows={6} className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-blue-400 mb-4 shadow-sm font-mono" placeholder="พาราสเซทตามอล, P01, ยาแก้ปวด, 1, 10&#10;อม็อกซี่ซิลลิน, A02, ยาปฏิชีวนะ, 1, 5" value={importText} onChange={(e) => setImportText(e.target.value)} />
-               <div className="flex gap-3">
-                  <button onClick={() => setIsImportModalOpen(false)} className="flex-1 bg-slate-100 text-slate-700 p-3.5 rounded-xl font-medium shadow-sm">ยกเลิก</button>
-                  <button onClick={handleImportExcel} disabled={importing} className="flex-1 bg-amber-500 hover:bg-amber-600 text-white p-3.5 rounded-xl font-medium shadow-md transition-colors disabled:opacity-60">{importing ? "กำลังนำเข้า..." : "ยืนยันการนำเข้า"}</button>
-               </div>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Upload size={20}/> นำเข้าข้อมูลยา</h2>
+                <button onClick={() => { setIsImportModalOpen(false); setImportExcelRows([]); setImportExcelFileName(""); }}><X size={20} className="text-slate-400" /></button>
+              </div>
+              <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+                  <label className="block text-sm font-bold text-emerald-800 mb-2">อัปโหลดไฟล์ Excel</label>
+                  <input type="file" accept=".xlsx,.xls,.csv" onChange={handleImportFileChange} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-600 file:px-3 file:py-2 file:font-semibold file:text-white hover:file:bg-emerald-700" />
+                  <p className="text-xs text-emerald-800 mt-2">รองรับ .xlsx, .xls และ .csv · อ่านข้อมูลจากแผ่นงานแรก</p>
+                  {importExcelFileName && <p className="text-xs font-semibold text-emerald-700 mt-2">เลือกไฟล์: {importExcelFileName} · {importExcelRows.length} แถว</p>}
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">ตู้ยาสำรอง (ใช้เมื่อไฟล์ไม่มีคอลัมน์ตู้ยา หรือระบุตู้ยาไม่ตรง)</label>
+                  <select value={importDefaultCabinet} onChange={(e) => setImportDefaultCabinet(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-blue-400">
+                    {categoriesList.map(category => <option key={category.id} value={category.id}>{category.name} (รหัส {category.id})</option>)}
+                  </select>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-700 mb-1">ระบบจับคู่คอลัมน์อัตโนมัติ</p>
+                  <p className="text-xs text-slate-500">รองรับหัวตาราง เช่น ชื่อยา, รหัส HosXP, หมายเหตุ, ตู้ยา/รหัสตู้ยา, สต็อกขั้นต่ำ ระบบจะจับคู่ชื่อหรือรหัสตู้กับตู้ยาในระบบให้เอง</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1.5 text-slate-600">หรือวางข้อมูลแบบเดิม (คั่นด้วยจุลภาค)</label>
+                  <p className="text-[11px] text-slate-500 mb-2"><code className="bg-slate-100 p-1 rounded">ชื่อยา, รหัสHosXP, หมายเหตุ, รหัสตู้ยา, สต็อกขั้นต่ำ</code></p>
+                  <textarea rows={4} className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-blue-400 shadow-sm font-mono" placeholder="พาราสเซทตามอล, P01, ยาแก้ปวด, 1, 10&#10;อม็อกซี่ซิลลิน, A02, ยาปฏิชีวนะ, 1, 5" value={importText} onChange={(e) => setImportText(e.target.value)} />
+                </div>
+                {importExcelRows.length > 0 && (
+                  <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
+                    <p className="text-xs font-bold text-slate-700 mb-1">ตัวอย่างข้อมูล 3 แถวแรก</p>
+                    {importExcelRows.slice(0, 3).map((row, index) => (
+                      <p key={index} className="text-[11px] text-slate-600 truncate">{row.map(cell => String(cell ?? "")).join(" | ")}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-3 mt-4">
+                <button onClick={() => { setIsImportModalOpen(false); setImportExcelRows([]); setImportExcelFileName(""); }} className="flex-1 bg-slate-100 text-slate-700 p-3.5 rounded-xl font-medium shadow-sm">ยกเลิก</button>
+                <button onClick={handleImportExcel} disabled={importing} className="flex-1 bg-amber-500 hover:bg-amber-600 text-white p-3.5 rounded-xl font-medium shadow-md transition-colors disabled:opacity-60">{importing ? "กำลังนำเข้า..." : "ยืนยันการนำเข้า"}</button>
+              </div>
             </div>
           </div>
         )}
