@@ -1451,18 +1451,27 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         .medicine-label-name {
           grid-column: 1;
           grid-row: 1;
-          align-self: start;
+          align-self: stretch;
           min-width: 0;
+          min-height: 0;
           max-height: none;
           overflow: visible;
-          display: block;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: stretch;
+          text-align: left;
           white-space: normal;
           text-overflow: clip;
-          line-height: 1.05;
+          line-height: 1.02;
           font-weight: 800;
           text-transform: uppercase;
           overflow-wrap: anywhere;
           word-break: normal;
+        }
+        .medicine-label-name-line {
+          display: block;
+          width: 100%;
         }
         .medicine-label-divider {
           grid-column: 1;
@@ -1545,10 +1554,15 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           .medicine-label-name {
             max-height: none !important;
             overflow: visible !important;
-            display: block !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
             -webkit-line-clamp: unset !important;
-            font-size: inherit;
-            line-height: 1.05 !important;
+            line-height: 1.02 !important;
+          }
+          .medicine-label-name-line {
+            display: block !important;
+            width: 100% !important;
           }
           .medicine-label-hosxp { font-size: 7pt !important; }
           .medicine-label-qr svg { width: 13mm !important; height: 13mm !important; }
@@ -1571,16 +1585,38 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
               <div
                 className="medicine-label-name"
                 style={{
-                  fontSize: (med.name || "").length > 140
-                    ? "8pt"
-                    : (med.name || "").length > 100
-                      ? "9pt"
-                      : (med.name || "").length > 70
-                        ? "10pt"
-                        : "12pt"
+                  fontSize: (() => {
+                    const nameParts = (med.name || "")
+                      .trim()
+                      .split(/(?=\\b\\d+(?:\\.\\d+)?\\s*MG\\b)/i)
+                      .map((part: string) => part.trim())
+                      .filter(Boolean);
+                    const estimatedLines = nameParts.reduce(
+                      (total: number, part: string) => total + Math.max(1, Math.ceil(part.length / 18)),
+                      0
+                    );
+                    return estimatedLines <= 1
+                      ? "17pt"
+                      : estimatedLines <= 2
+                        ? "15pt"
+                        : estimatedLines <= 3
+                          ? "13pt"
+                          : estimatedLines <= 4
+                            ? "11pt"
+                            : estimatedLines <= 5
+                              ? "10pt"
+                              : "8pt";
+                  })()
                 }}
               >
-                {med.name}
+                {(med.name || "")
+                  .trim()
+                  .split(/(?=\\b\\d+(?:\\.\\d+)?\\s*MG\\b)/i)
+                  .map((part: string, index: number) => (
+                    <span className="medicine-label-name-line" key={`${med.id}-name-${index}`}>
+                      {part.trim()}
+                    </span>
+                  ))}
               </div>
               <div className="medicine-label-divider" />
               <div className="medicine-label-hosxp">รหัส {med.hosxp_icode || "-"}</div>
