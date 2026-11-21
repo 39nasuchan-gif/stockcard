@@ -290,6 +290,12 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const [showQRPrintView, setShowQRPrintView] = useState(false); 
   const [qrPrintData, setQrPrintData] = useState<any[]>([]);
   const [baseUrl, setBaseUrl] = useState("");
+
+  const [isLabelModalOpen, setIsLabelModalOpen] = useState(false);
+  const [labelTargetCategory, setLabelTargetCategory] = useState<number | "all">("all");
+  const [labelTargetId, setLabelTargetId] = useState("all");
+  const [showLabelPrintView, setShowLabelPrintView] = useState(false);
+  const [labelPrintData, setLabelPrintData] = useState<any[]>([]);
   
   const [isImportModalOpen, setIsImportModalOpen] = useState(false); 
   const [importText, setImportText] = useState(""); 
@@ -1265,6 +1271,23 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     setQrPrintData(medsToPrint); setShowQRPrintView(true); setIsQRModalOpen(false); 
   };
 
+  const handleGenerateLabelPrint = () => {
+    let medsToPrint = medicines;
+    if (labelTargetCategory !== "all") {
+      medsToPrint = medsToPrint.filter(m => String(m.cabinet_category) === String(labelTargetCategory));
+    }
+    if (labelTargetId !== "all") {
+      medsToPrint = medsToPrint.filter(m => String(m.id) === String(labelTargetId));
+    }
+    if (medsToPrint.length === 0) {
+      alert("ไม่พบรายการยาที่ต้องการสร้างป้าย");
+      return;
+    }
+    setLabelPrintData(medsToPrint);
+    setShowLabelPrintView(true);
+    setIsLabelModalOpen(false);
+  };
+
   const filteredVisitorNotes = visitorNotes.filter(n => 
       visitorListMode === 'pending' ? n.status === 'visitor_note' : n.status === 'visitor_acknowledged'
   );
@@ -1373,6 +1396,174 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
     </div> 
   );
 
+  if (showLabelPrintView) return (
+    <main className="medicine-label-print-page">
+      <style jsx global>{`
+        .medicine-label-print-page {
+          min-height: 100vh;
+          padding: 24px;
+          background: #eef2f7;
+          color: #111827;
+          font-family: Arial, Helvetica, sans-serif;
+        }
+        .medicine-label-toolbar {
+          max-width: 1100px;
+          margin: 0 auto 20px;
+          padding: 14px 18px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+          background: #fff;
+          border: 1px solid #e2e8f0;
+          border-radius: 14px;
+        }
+        .medicine-label-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(63mm, 1fr));
+          gap: 3mm;
+          max-width: 1100px;
+          margin: 0 auto;
+          justify-items: center;
+          align-items: start;
+        }
+        .medicine-label {
+          width: 100%;
+          max-width: 63mm;
+          height: 37mm;
+          box-sizing: border-box;
+          padding: 3mm;
+          overflow: hidden;
+          color: #111;
+          background: #fff;
+          border: 0.5mm solid #111;
+          border-radius: 5mm;
+        }
+        .medicine-label-main {
+          display: grid;
+          width: 100%;
+          height: 100%;
+          grid-template-columns: minmax(0, 1fr) 15mm;
+          grid-template-rows: minmax(0, 1fr) 0.7mm 7mm;
+          column-gap: 2.5mm;
+        }
+        .medicine-label-name {
+          grid-column: 1;
+          grid-row: 1;
+          align-self: start;
+          overflow: hidden;
+          display: -webkit-box;
+          -webkit-box-orient: vertical;
+          -webkit-line-clamp: 2;
+          line-height: 1.08;
+          font-size: 13px;
+          font-weight: 800;
+          text-transform: uppercase;
+          overflow-wrap: anywhere;
+        }
+        .medicine-label-divider {
+          grid-column: 1;
+          grid-row: 2;
+          align-self: center;
+          width: 100%;
+          height: 0.7mm;
+          background: #18b96b;
+          border-radius: 999px;
+        }
+        .medicine-label-hosxp {
+          grid-column: 1;
+          grid-row: 3;
+          align-self: center;
+          justify-self: center;
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-size: 10px;
+          font-weight: 700;
+        }
+        .medicine-label-qr {
+          grid-column: 2;
+          grid-row: 1 / 4;
+          align-self: end;
+          justify-self: end;
+          display: block;
+          width: 15mm;
+          height: 15mm;
+          background: #fff;
+        }
+        .medicine-label-qr svg {
+          display: block;
+          width: 100%;
+          height: 100%;
+        }
+        @media print {
+          @page { size: A4 portrait; margin: 5mm; }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+          }
+          .medicine-label-print-page {
+            min-height: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+          }
+          .medicine-label-toolbar { display: none !important; }
+          .medicine-label-grid {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0 !important;
+            grid-template-columns: repeat(3, 63mm) !important;
+            grid-auto-rows: 37mm;
+            gap: 2mm;
+            justify-content: center;
+            align-content: start;
+          }
+          .medicine-label {
+            width: 63mm !important;
+            max-width: none !important;
+            height: 37mm !important;
+            padding: 3mm !important;
+            border: 0.5mm solid #111 !important;
+            border-radius: 5mm !important;
+            break-inside: avoid;
+            page-break-inside: avoid;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .medicine-label-name { font-size: 11pt !important; line-height: 1.05 !important; }
+          .medicine-label-hosxp { font-size: 8pt !important; }
+        }
+      `}</style>
+      <div className="medicine-label-toolbar">
+        <div>
+          <h1 className="text-lg font-bold">ตัวอย่างป้ายกำกับยา</h1>
+          <p className="text-sm text-slate-500">ทั้งหมด {labelPrintData.length} ป้าย · กระดาษ A4 · 3 คอลัมน์</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowLabelPrintView(false)} className="px-4 py-2 border border-slate-300 rounded-lg font-medium bg-white">ปิด</button>
+          <button onClick={() => window.print()} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium flex items-center gap-2"><Printer size={18}/> พิมพ์ป้าย</button>
+        </div>
+      </div>
+      <div className="medicine-label-grid">
+        {labelPrintData.map((med) => (
+          <article className="medicine-label" key={med.id} aria-label={`ป้ายยา ${med.name}`}>
+            <div className="medicine-label-main">
+              <div className="medicine-label-name">{med.name}</div>
+              <div className="medicine-label-divider" />
+              <div className="medicine-label-hosxp">รหัส {med.hosxp_icode || "-"}</div>
+              <div className="medicine-label-qr">
+                <QRCodeSVG value={`${baseUrl}/?id=${med.id}`} size={128} level="M" />
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </main>
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#e0eaf5] via-[#f0f4f8] to-[#e8ebf2] p-2 md:p-8 font-sans">
       <div className="max-w-[1400px] mx-auto space-y-4 md:space-y-6">
@@ -1402,6 +1593,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                 <button onClick={() => setIsExpDashboardOpen(true)} className="flex items-center justify-center gap-1.5 bg-rose-50/80 text-rose-700 border border-rose-200/50 hover:bg-rose-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><CalendarDays size={16} /> เช็คยาใกล้ EXP</button>
                 <button onClick={() => setIsCalcModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-cyan-50/80 text-cyan-700 border border-cyan-200/50 hover:bg-cyan-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Calculator size={16} /> คำนวณเบิกยา</button>
                 <button onClick={() => setIsQRModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-indigo-50/80 text-indigo-700 border border-indigo-200/50 hover:bg-indigo-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><QrCode size={16} /> พิมพ์ QR</button>
+                <button onClick={() => setIsLabelModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-emerald-50/80 text-emerald-700 border border-emerald-200/50 hover:bg-emerald-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Printer size={16} /> ป้ายกำกับยา</button>
                 <button onClick={() => setIsReportModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-blue-50/80 text-blue-700 border border-blue-200/50 hover:bg-blue-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><FileText size={16} /> พิมพ์รายงาน</button>
                 <button onClick={() => setIsImportModalOpen(true)} className="flex items-center justify-center gap-1.5 bg-amber-50/80 text-amber-700 border border-amber-200/50 hover:bg-amber-100 px-3 py-2 rounded-xl font-medium text-xs md:text-sm shadow-sm transition-all"><Upload size={16} /> นำเข้า</button>
                 <button onClick={openAddMedModal} className="flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-3.5 py-2 rounded-xl font-medium text-xs md:text-sm shadow-md shadow-emerald-200 transition-all"><Plus size={18} /> เพิ่มยา</button>
@@ -2205,6 +2397,39 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                    </select>
                 </div>
                 <div className="pt-2 flex gap-3"><button onClick={() => setIsQRModalOpen(false)} className="flex-1 bg-white/60 border border-white hover:bg-white/90 p-3.5 rounded-xl font-medium text-slate-600 shadow-sm">ยกเลิก</button><button onClick={handleGenerateQRPrint} className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white p-3.5 rounded-xl font-medium shadow-md transition-colors">สร้าง QR Code</button></div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Medicine Labels */}
+        {isLabelModalOpen && session && (
+          <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-md flex items-center justify-center p-4 z-[60]">
+            <div className="bg-white/90 backdrop-blur-xl border border-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+              <div className="flex justify-between items-center p-5 border-b border-white/50 bg-emerald-50/60">
+                <h2 className="text-lg font-bold text-emerald-800 flex items-center gap-2"><Printer size={20}/> พิมพ์ป้ายกำกับยา</h2>
+                <button onClick={() => setIsLabelModalOpen(false)}><X size={22} className="text-slate-400 hover:text-slate-600" /></button>
+              </div>
+              <div className="p-6 space-y-4">
+                <p className="text-xs text-slate-500 leading-relaxed">สร้างป้ายที่รวมชื่อยา รหัส HosXP และ QR Code สำหรับเปิดหน้ารายละเอียดของยานั้น สามารถพิมพ์หลายรายการพร้อมกันได้</p>
+                <div>
+                  <label className="block text-sm font-medium mb-1.5 text-slate-600">เลือกตู้ยา (Cabinet)</label>
+                  <select className="w-full bg-white border border-slate-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-400 font-medium text-slate-700 shadow-sm" value={labelTargetCategory} onChange={(e) => { setLabelTargetCategory(e.target.value === "all" ? "all" : Number(e.target.value)); setLabelTargetId("all"); }}>
+                    <option value="all">-- ทุกตู้ยา --</option>
+                    {categoriesList?.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1.5 text-slate-600">เลือกรายการยา</label>
+                  <select className="w-full bg-white border border-slate-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-400 font-medium text-slate-700 shadow-sm" value={labelTargetId} onChange={(e) => setLabelTargetId(e.target.value)}>
+                    <option value="all">-- พิมพ์ยาทั้งหมด (ตามตู้ที่เลือก) --</option>
+                    {medicines.filter(m => labelTargetCategory === "all" || String(m.cabinet_category) === String(labelTargetCategory)).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                </div>
+                <div className="pt-2 flex gap-3">
+                  <button onClick={() => setIsLabelModalOpen(false)} className="flex-1 bg-white border border-slate-200 hover:bg-slate-50 p-3.5 rounded-xl font-medium text-slate-600 shadow-sm">ยกเลิก</button>
+                  <button onClick={handleGenerateLabelPrint} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white p-3.5 rounded-xl font-medium shadow-md transition-colors">สร้างป้ายกำกับยา</button>
+                </div>
               </div>
             </div>
           </div>
