@@ -1479,7 +1479,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
       <style jsx global>{`
         @page {
           size: ${reportPaperSize} ${reportPaperSize === "A4" ? "portrait" : "landscape"};
-          margin: ${reportPaperSize === "A5" ? "6mm" : "8mm"};
+          margin: ${reportPaperSize === "A5" ? "6mm 6mm 14mm" : "8mm 8mm 16mm"};
         }
         .stock-report-page { background: #eaf0f7; }
         .stock-report-sheet {
@@ -1630,7 +1630,9 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           text-align: center;
           font-style: italic;
         }
-        .stock-report-footer { margin: 4mm 2mm 0; color: #40536c; font-size: 8pt; text-align: right; }
+        .stock-report-print-footer {
+          display: none;
+        }
         @media print {
           html, body { background: #fff !important; }
           body { margin: 0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -1661,7 +1663,21 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           .stock-lot-breakdown { font-size: ${reportPaperSize === "A5" ? "5.5pt" : "7pt"}; }
           .stock-report-table thead { display: table-header-group; }
           .stock-report-table tr { break-inside: avoid; page-break-inside: avoid; }
-          .stock-report-footer { margin-top: 3mm; }
+          .stock-report-print-footer {
+            display: block !important;
+            position: fixed !important;
+            right: 0;
+            bottom: 1mm;
+            left: 0;
+            padding: 1mm 1mm 0 0;
+            color: #40536c !important;
+            background: #fff !important;
+            font-size: 8pt;
+            text-align: right;
+            z-index: 1000;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
         }
       `}</style>
       <div className="stock-report-inner max-w-5xl mx-auto">
@@ -1697,7 +1713,6 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                 </div>
                 <div className="stock-report-summary-code">
                   <div className="stock-report-code-line"><strong>รหัสยา :</strong> {medData.hosxp || "-"}</div>
-                  <div className="stock-report-code-line"><strong>หมายเหตุ :</strong> {medData.note || "-"}</div>
                 </div>
                 <div className="stock-report-summary-units">
                   <div className="stock-report-label">หน่วยนับ</div>
@@ -1724,7 +1739,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                       <th>ตัดจ่าย</th>
                       <th>คงเหลือ</th>
                       <th>ผู้ดำเนินการ</th>
-                      <th>หมายเหตุ (Exp)</th>
+                      <th>หมายเหตุ</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1742,16 +1757,16 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                           )}
                         </td>
                         <td>{tx.staff_name || "-"}</td>
-                        <td>{tx.lotExp !== "N/A" ? tx.lotExp : ""} {tx.edit_note ? `[${tx.edit_note}]` : ""}</td>
+                        <td>{tx.edit_note?.trim() || "-"}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               )}
-              <footer className="stock-report-footer">วันที่พิมพ์ : {new Date().toLocaleString("th-TH")}</footer>
             </section>
           ))}
         </div>
+        <footer className="stock-report-print-footer">วันที่พิมพ์ : {new Date().toLocaleString("th-TH")}</footer>
       </div>
     </div> 
   );  if (showQRPrintView) return ( 
