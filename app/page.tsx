@@ -1588,7 +1588,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                   fontSize: (() => {
                     const nameParts = (med.name || "")
                       .trim()
-                      .split(/(?=\\b\\d+(?:\\.\\d+)?\\s*MG\\b)/i)
+                      .split(/(?=\b\d+(?:\.\d+)?\s*MG\b)/i)
                       .map((part: string) => part.trim())
                       .filter(Boolean);
                     const estimatedLines = nameParts.reduce(
@@ -1611,7 +1611,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
               >
                 {(med.name || "")
                   .trim()
-                  .split(/(?=\\b\\d+(?:\\.\\d+)?\\s*MG\\b)/i)
+                  .split(/(?=\b\d+(?:\.\d+)?\s*MG\b)/i)
                   .map((part: string, index: number) => (
                     <span className="medicine-label-name-line" key={`${med.id}-name-${index}`}>
                       {part.trim()}
