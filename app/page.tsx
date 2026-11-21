@@ -1421,82 +1421,79 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         }
         .medicine-label-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(63mm, 1fr));
+          grid-template-columns: repeat(auto-fit, 40mm);
           gap: 3mm;
           max-width: 1100px;
           margin: 0 auto;
+          justify-content: center;
           justify-items: center;
           align-items: start;
         }
         .medicine-label {
-          width: 100%;
-          max-width: 63mm;
-          height: 37mm;
+          width: 40mm;
+          height: 60mm;
           box-sizing: border-box;
           padding: 3mm;
           overflow: hidden;
           color: #111;
           background: #fff;
           border: 0.5mm solid #111;
-          border-radius: 5mm;
+          border-radius: 4mm;
         }
         .medicine-label-main {
-          display: grid;
+          display: flex;
+          flex-direction: column;
+          align-items: stretch;
+          justify-content: space-between;
+          gap: 1.5mm;
           width: 100%;
           height: 100%;
-          grid-template-columns: minmax(0, 1fr) 15mm;
-          grid-template-rows: minmax(0, 1fr) 0.7mm 7mm;
-          column-gap: 2.5mm;
         }
         .medicine-label-name {
-          grid-column: 1;
-          grid-row: 1;
-          align-self: start;
+          min-height: 13mm;
+          max-height: 17mm;
           overflow: hidden;
           display: -webkit-box;
           -webkit-box-orient: vertical;
-          -webkit-line-clamp: 2;
+          -webkit-line-clamp: 3;
           line-height: 1.08;
-          font-size: 13px;
+          font-size: 12px;
           font-weight: 800;
           text-transform: uppercase;
           overflow-wrap: anywhere;
         }
         .medicine-label-divider {
-          grid-column: 1;
-          grid-row: 2;
-          align-self: center;
+          flex: 0 0 0.7mm;
           width: 100%;
           height: 0.7mm;
           background: #18b96b;
           border-radius: 999px;
         }
         .medicine-label-hosxp {
-          grid-column: 1;
-          grid-row: 3;
-          align-self: center;
-          justify-self: center;
-          max-width: 100%;
+          width: 100%;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+          text-align: center;
           font-size: 10px;
+          line-height: 1.1;
           font-weight: 700;
         }
         .medicine-label-qr {
-          grid-column: 2;
-          grid-row: 1 / 4;
-          align-self: end;
-          justify-self: end;
-          display: block;
-          width: 15mm;
-          height: 15mm;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex: 1 1 auto;
+          min-height: 0;
           background: #fff;
         }
         .medicine-label-qr svg {
           display: block;
-          width: 100%;
-          height: 100%;
+          width: 22mm;
+          height: 22mm;
+          max-width: 100%;
+          max-height: 100%;
+          shape-rendering: crispEdges;
         }
         @media print {
           @page { size: A4 portrait; margin: 5mm; }
@@ -1515,32 +1512,38 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
             width: 100% !important;
             max-width: none !important;
             margin: 0 !important;
-            grid-template-columns: repeat(3, 63mm) !important;
-            grid-auto-rows: 37mm;
+            grid-template-columns: repeat(4, 40mm) !important;
+            grid-auto-rows: 60mm;
             gap: 2mm;
             justify-content: center;
             align-content: start;
           }
           .medicine-label {
-            width: 63mm !important;
+            width: 40mm !important;
             max-width: none !important;
-            height: 37mm !important;
-            padding: 3mm !important;
+            height: 60mm !important;
+            padding: 2.5mm !important;
             border: 0.5mm solid #111 !important;
-            border-radius: 5mm !important;
+            border-radius: 4mm !important;
             break-inside: avoid;
             page-break-inside: avoid;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
-          .medicine-label-name { font-size: 11pt !important; line-height: 1.05 !important; }
-          .medicine-label-hosxp { font-size: 8pt !important; }
+          .medicine-label-name {
+            min-height: 13mm;
+            max-height: 17mm;
+            font-size: 9pt !important;
+            line-height: 1.05 !important;
+          }
+          .medicine-label-hosxp { font-size: 7pt !important; }
+          .medicine-label-qr svg { width: 22mm !important; height: 22mm !important; }
         }
       `}</style>
       <div className="medicine-label-toolbar">
         <div>
           <h1 className="text-lg font-bold">ตัวอย่างป้ายกำกับยา</h1>
-          <p className="text-sm text-slate-500">ทั้งหมด {labelPrintData.length} ป้าย · กระดาษ A4 · 3 คอลัมน์</p>
+          <p className="text-sm text-slate-500">ทั้งหมด {labelPrintData.length} ป้าย · ขนาด 4 × 6 ซม. · กระดาษ A4 แนวตั้ง · 4 คอลัมน์ (สูงสุดประมาณ 16 ป้ายต่อหน้า)</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowLabelPrintView(false)} className="px-4 py-2 border border-slate-300 rounded-lg font-medium bg-white">ปิด</button>
