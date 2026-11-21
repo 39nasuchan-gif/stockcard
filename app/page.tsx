@@ -1475,11 +1475,11 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const pendingVisitorCount = visitorNotes.filter(n => n.status === 'visitor_note').length;
 
   if (showPrintView) return ( 
-    <div className={\`stock-report-page bg-white min-h-screen text-black p-4 md:p-8 print:p-0\`} data-paper-size={reportPaperSize}>
-      <style jsx global>{\`
+    <div className={`stock-report-page bg-white min-h-screen text-black p-4 md:p-8 print:p-0`} data-paper-size={reportPaperSize}>
+      <style jsx global>{`
         @page {
-          size: \${reportPaperSize} \${reportPaperSize === "A4" ? "portrait" : "landscape"};
-          margin: \${reportPaperSize === "A5" ? "6mm" : "8mm"};
+          size: ${reportPaperSize} ${reportPaperSize === "A4" ? "portrait" : "landscape"};
+          margin: ${reportPaperSize === "A5" ? "6mm" : "8mm"};
         }
         .stock-report-page { background: #eaf0f7; }
         .stock-report-sheet {
@@ -1638,37 +1638,37 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           .stock-report-inner { width: 100% !important; max-width: none !important; margin: 0 !important; }
           .stock-report-sheet { margin: 0 !important; padding: 0 !important; border: 0 !important; box-shadow: none !important; break-after: page; page-break-after: always; }
           .stock-report-sheet:last-child { break-after: auto; page-break-after: auto; }
-          .stock-report-banner { min-height: \${reportPaperSize === "A5" ? "20mm" : "25mm"}; padding: 4mm 5mm; }
-          .stock-report-brand { font-size: \${reportPaperSize === "A5" ? "17pt" : "21pt"}; min-width: 34mm; }
+          .stock-report-banner { min-height: ${reportPaperSize === "A5" ? "20mm" : "25mm"}; padding: 4mm 5mm; }
+          .stock-report-brand { font-size: ${reportPaperSize === "A5" ? "17pt" : "21pt"}; min-width: 34mm; }
           .stock-report-brand-mark { width: 10mm; height: 10mm; font-size: 15pt; }
-          .stock-report-banner-title { font-size: \${reportPaperSize === "A5" ? "13pt" : "17pt"}; }
-          .stock-report-banner-subtitle { font-size: \${reportPaperSize === "A5" ? "9pt" : "11pt"}; }
-          .stock-report-summary { min-height: \${reportPaperSize === "A5" ? "20mm" : "24mm"}; margin-top: 2.5mm; margin-bottom: 3mm; }
-          .stock-report-medicine-name { font-size: \${reportPaperSize === "A5" ? "14pt" : "18pt"}; }
-          .stock-report-label { font-size: \${reportPaperSize === "A5" ? "7pt" : "9pt"}; }
-          .stock-report-code-line { font-size: \${reportPaperSize === "A5" ? "8pt" : "10pt"}; }
-          .stock-report-unit-list { font-size: \${reportPaperSize === "A5" ? "7pt" : "9pt"}; }
-          .stock-report-period { font-size: \${reportPaperSize === "A5" ? "6.5pt" : "8pt"}; }
-          .stock-report-table { font-size: \${reportPaperSize === "A5" ? "6.5pt" : "8.5pt"}; }
-          .stock-report-table th { padding: \${reportPaperSize === "A5" ? "2mm 1mm" : "2.5mm 1.5mm"}; }
-          .stock-report-table td { padding: \${reportPaperSize === "A5" ? "1.5mm 1mm" : "2mm 1.5mm"}; }
+          .stock-report-banner-title { font-size: ${reportPaperSize === "A5" ? "13pt" : "17pt"}; }
+          .stock-report-banner-subtitle { font-size: ${reportPaperSize === "A5" ? "9pt" : "11pt"}; }
+          .stock-report-summary { min-height: ${reportPaperSize === "A5" ? "20mm" : "24mm"}; margin-top: 2.5mm; margin-bottom: 3mm; }
+          .stock-report-medicine-name { font-size: ${reportPaperSize === "A5" ? "14pt" : "18pt"}; }
+          .stock-report-label { font-size: ${reportPaperSize === "A5" ? "7pt" : "9pt"}; }
+          .stock-report-code-line { font-size: ${reportPaperSize === "A5" ? "8pt" : "10pt"}; }
+          .stock-report-unit-list { font-size: ${reportPaperSize === "A5" ? "7pt" : "9pt"}; }
+          .stock-report-period { font-size: ${reportPaperSize === "A5" ? "6.5pt" : "8pt"}; }
+          .stock-report-table { font-size: ${reportPaperSize === "A5" ? "6.5pt" : "8.5pt"}; }
+          .stock-report-table th { padding: ${reportPaperSize === "A5" ? "2mm 1mm" : "2.5mm 1.5mm"}; }
+          .stock-report-table td { padding: ${reportPaperSize === "A5" ? "1.5mm 1mm" : "2mm 1.5mm"}; }
           .stock-report-table th:nth-child(1), .stock-report-table td:nth-child(1) { width: 18%; }
           .stock-report-table th:nth-child(2), .stock-report-table td:nth-child(2) { width: 15%; }
           .stock-report-table th:nth-child(3), .stock-report-table td:nth-child(3) { width: 15%; }
           .stock-report-table th:nth-child(4), .stock-report-table td:nth-child(4) { width: 22%; }
           .stock-report-table th:nth-child(5), .stock-report-table td:nth-child(5) { width: 14%; }
           .stock-report-table th:nth-child(6), .stock-report-table td:nth-child(6) { width: 16%; }
-          .stock-lot-breakdown { font-size: \${reportPaperSize === "A5" ? "5.5pt" : "7pt"}; }
+          .stock-lot-breakdown { font-size: ${reportPaperSize === "A5" ? "5.5pt" : "7pt"}; }
           .stock-report-table thead { display: table-header-group; }
           .stock-report-table tr { break-inside: avoid; page-break-inside: avoid; }
           .stock-report-footer { margin-top: 3mm; }
         }
-      \`}</style>
+      `}</style>
       <div className="stock-report-inner max-w-5xl mx-auto">
         <div className="print:hidden flex justify-between mb-6 bg-gray-100 p-4 rounded-xl">
           <div>
             <h1 className="text-xl font-bold">ตัวอย่างก่อนพิมพ์รายงาน</h1>
-            <p className="text-xs text-slate-500 mt-1">รูปแบบ Stock Card ใหม่ · \${reportPaperSize} \${reportPaperSize === "A4" ? "แนวตั้ง" : "แนวนอน"}</p>
+            <p className="text-xs text-slate-500 mt-1">รูปแบบ Stock Card ใหม่ · ${reportPaperSize} ${reportPaperSize === "A4" ? "แนวตั้ง" : "แนวนอน"}</p>
           </div>
           <div className="flex gap-3">
             <button onClick={() => setShowPrintView(false)} className="px-4 py-2 border rounded-lg font-medium">ปิด</button>
@@ -1742,7 +1742,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
                           )}
                         </td>
                         <td>{tx.staff_name || "-"}</td>
-                        <td>{tx.lotExp !== "N/A" ? tx.lotExp : ""} {tx.edit_note ? \`[\${tx.edit_note}]\` : ""}</td>
+                        <td>{tx.lotExp !== "N/A" ? tx.lotExp : ""} {tx.edit_note ? `[${tx.edit_note}]` : ""}</td>
                       </tr>
                     ))}
                   </tbody>
