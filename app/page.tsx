@@ -1162,9 +1162,10 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
 
     setIsGeneratingReport(true); 
     try { 
+      // ดึงรายการทั้งหมดจนถึงวันสิ้นสุด เพื่อคำนวณยอดคงเหลือสะสมให้ถูกต้อง
+      // ส่วนรายการที่แสดงในรายงานจะถูกกรองตามวันเริ่มต้นอีกครั้งด้านล่าง
       let query = supabase.from("stock_transactions").select("*")
         .eq("status", "completed")
-        .gte("created_at", startDate.toISOString())
         .lte("created_at", endDate.toISOString())
         .order("created_at", { ascending: true }); 
       if (reportTargetId !== "all") query = query.eq("medicine_id", reportTargetId); 
@@ -1212,7 +1213,10 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           medName: med.name,
           hosxp: med.hosxp_icode,
           note: med.note,
-          transactions: processedTxs,
+          transactions: processedTxs.filter(tx => {
+            const transactionTime = new Date(tx.created_at).getTime();
+            return transactionTime >= startDate.getTime() && transactionTime <= endDate.getTime();
+          }),
           periodStart: reportStartDate,
           periodEnd: reportEndDate
         }; 
