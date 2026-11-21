@@ -1449,7 +1449,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           column-gap: 2.5mm;
         }
         .medicine-label-name {
-          grid-column: 1;
+          grid-column: 1 / 3;
           grid-row: 1;
           align-self: stretch;
           min-width: 0;
@@ -1498,7 +1498,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         }
         .medicine-label-qr {
           grid-column: 2;
-          grid-row: 1 / 4;
+          grid-row: 2 / 4;
           align-self: end;
           justify-self: end;
           display: flex;
