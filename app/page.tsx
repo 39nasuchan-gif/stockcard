@@ -1452,16 +1452,17 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           grid-column: 1;
           grid-row: 1;
           align-self: start;
-          max-height: 17mm;
-          overflow: hidden;
-          display: -webkit-box;
-          -webkit-box-orient: vertical;
-          -webkit-line-clamp: 2;
+          min-width: 0;
+          max-height: none;
+          overflow: visible;
+          display: block;
+          white-space: normal;
+          text-overflow: clip;
           line-height: 1.05;
-          font-size: 12px;
           font-weight: 800;
           text-transform: uppercase;
           overflow-wrap: anywhere;
+          word-break: normal;
         }
         .medicine-label-divider {
           grid-column: 1;
@@ -1542,8 +1543,11 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
             print-color-adjust: exact;
           }
           .medicine-label-name {
-            max-height: 17mm;
-            font-size: 9pt !important;
+            max-height: none !important;
+            overflow: visible !important;
+            display: block !important;
+            -webkit-line-clamp: unset !important;
+            font-size: inherit;
             line-height: 1.05 !important;
           }
           .medicine-label-hosxp { font-size: 7pt !important; }
@@ -1564,7 +1568,20 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         {labelPrintData.map((med) => (
           <article className="medicine-label" key={med.id} aria-label={`ป้ายยา ${med.name}`}>
             <div className="medicine-label-main">
-              <div className="medicine-label-name">{med.name}</div>
+              <div
+                className="medicine-label-name"
+                style={{
+                  fontSize: (med.name || "").length > 140
+                    ? "8pt"
+                    : (med.name || "").length > 100
+                      ? "9pt"
+                      : (med.name || "").length > 70
+                        ? "10pt"
+                        : "12pt"
+                }}
+              >
+                {med.name}
+              </div>
               <div className="medicine-label-divider" />
               <div className="medicine-label-hosxp">รหัส {med.hosxp_icode || "-"}</div>
               <div className="medicine-label-qr">
