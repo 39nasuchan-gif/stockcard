@@ -1368,12 +1368,41 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
               return `${l.exp}: ${formatPrintPack(l.qty, l.packSize, l.unitName)}`;
             });
           }
-          return { ...tx, balanceAfter: runningBal, amountText: formatPrintPack(tx.amount, pSize, pUnit), balanceText: formatPrintPack(runningBal, pSize, pUnit), lotBreakdown }; 
-        }); 
+          return {
+            ...tx,
+            lotExp,
+            balanceAfter: runningBal,
+            amountText: formatPrintPack(tx.amount, pSize, pUnit),
+            balanceText: formatPrintPack(runningBal, pSize, pUnit),
+            lotBreakdown
+          }; 
+        });
+
+        // สรุปทุกหน่วยบรรจุที่เคยมีรายการเคลื่อนไหวจนถึงวันสิ้นสุดรายงาน
+        // ใช้ล็อตที่ถูกอ้างถึงในประวัติ ไม่จำกัดเฉพาะล็อตที่ยังเหลือสต็อก
+        const lotsById = new Map(
+          (med.medicine_lots || []).map((lot: any) => [String(lot.id), lot])
+        );
+        const historicalLots = medTxs
+          .map(tx => lotsById.get(String(tx.lot_id)))
+          .filter(Boolean) as any[];
+        const lotsForUnits = historicalLots.length > 0
+          ? historicalLots
+          : (med.medicine_lots || []);
+        const unitMap = new Map<string, string>();
+        lotsForUnits.forEach((lot: any) => {
+          const size = Number(lot.pack_size) || 1;
+          const rawUnit = lot.unit_name || "หน่วย";
+          const unit = rawUnit === "'s" ? "เม็ด" : rawUnit;
+          const key = `${size}|${unit}`;
+          unitMap.set(key, size > 1 ? `กล่อง (${size} ${unit})` : unit);
+        });
+
         grouped[med.id] = {
           medName: med.name,
           hosxp: med.hosxp_icode,
           note: med.note,
+          units: Array.from(unitMap.values()),
           transactions: processedTxs.filter(tx => {
             const transactionTime = new Date(tx.created_at).getTime();
             return transactionTime >= startDate.getTime() && transactionTime <= endDate.getTime();
@@ -1446,12 +1475,162 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const pendingVisitorCount = visitorNotes.filter(n => n.status === 'visitor_note').length;
 
   if (showPrintView) return ( 
-    <div className={`stock-report-page bg-white min-h-screen text-black p-4 md:p-8 print:p-0`} data-paper-size={reportPaperSize}>
-      <style jsx global>{`
+    <div className={\`stock-report-page bg-white min-h-screen text-black p-4 md:p-8 print:p-0\`} data-paper-size={reportPaperSize}>
+      <style jsx global>{\`
         @page {
-          size: ${reportPaperSize} ${reportPaperSize === "A4" ? "portrait" : "landscape"};
-          margin: ${reportPaperSize === "A5" ? "6mm" : "8mm"};
+          size: \${reportPaperSize} \${reportPaperSize === "A4" ? "portrait" : "landscape"};
+          margin: \${reportPaperSize === "A5" ? "6mm" : "8mm"};
         }
+        .stock-report-page { background: #eaf0f7; }
+        .stock-report-sheet {
+          width: 100%;
+          max-width: 100%;
+          margin: 0 auto 24px;
+          padding: 0 0 14px;
+          color: #172a43;
+          background: #fff;
+          font-family: Arial, Helvetica, sans-serif;
+        }
+        .stock-report-banner {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          min-height: 27mm;
+          padding: 5mm 7mm;
+          color: #fff;
+          background: linear-gradient(112deg, #102f52 0%, #173f6d 72%, #2e5f91 100%);
+          overflow: hidden;
+        }
+        .stock-report-brand {
+          display: flex;
+          align-items: center;
+          gap: 3mm;
+          min-width: 42mm;
+          font-size: 23pt;
+          font-weight: 800;
+          letter-spacing: .3px;
+          white-space: nowrap;
+        }
+        .stock-report-brand-mark {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 13mm;
+          height: 13mm;
+          border: 1.2px solid rgba(255,255,255,.85);
+          border-radius: 50%;
+          font-size: 20pt;
+          line-height: 1;
+        }
+        .stock-report-banner-text { flex: 1; min-width: 0; text-align: center; }
+        .stock-report-banner-title { font-size: 19pt; line-height: 1.2; font-weight: 800; }
+        .stock-report-banner-subtitle { margin-top: 1.5mm; font-size: 12pt; opacity: .96; }
+        .stock-report-banner-tag {
+          padding: 2mm 3mm;
+          border: 1px solid rgba(255,255,255,.6);
+          border-radius: 999px;
+          font-size: 8pt;
+          font-weight: 700;
+          letter-spacing: .5px;
+          white-space: nowrap;
+        }
+        .stock-report-summary {
+          display: grid;
+          grid-template-columns: 40% 30% 30%;
+          gap: 0;
+          margin: 3mm 2mm 4mm;
+          min-height: 24mm;
+          border: 1px solid #9db2c9;
+          border-radius: 4mm;
+          overflow: hidden;
+          background: #fff;
+        }
+        .stock-report-summary-name {
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          padding: 3mm 5mm;
+          background: #e4effa;
+          border-right: 1px solid #9db2c9;
+        }
+        .stock-report-label { margin-bottom: 1.5mm; font-size: 9pt; font-weight: 700; color: #344b66; }
+        .stock-report-medicine-name { font-size: 19pt; line-height: 1.15; font-weight: 800; overflow-wrap: anywhere; }
+        .stock-report-summary-code, .stock-report-summary-units {
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          padding: 3mm 4mm;
+          min-width: 0;
+        }
+        .stock-report-summary-code { border-right: 1px solid #9db2c9; }
+        .stock-report-code-line { font-size: 10pt; line-height: 1.5; overflow-wrap: anywhere; }
+        .stock-report-unit-list { display: flex; flex-direction: column; gap: 1mm; font-size: 9pt; line-height: 1.35; font-weight: 700; }
+        .stock-report-unit-item { white-space: normal; overflow-wrap: anywhere; }
+        .stock-report-period {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 3mm;
+          margin: 0 2mm 3mm;
+          color: #40536c;
+          font-size: 8pt;
+        }
+        .stock-report-table {
+          width: calc(100% - 4mm);
+          margin: 0 2mm;
+          border-collapse: separate;
+          border-spacing: 0;
+          table-layout: fixed;
+          border: 1px solid #7892ae;
+          border-radius: 3mm;
+          overflow: hidden;
+          font-size: 9pt;
+        }
+        .stock-report-table th {
+          padding: 3mm 1.5mm;
+          color: #fff;
+          background: #173f6d;
+          border-right: 1px solid rgba(255,255,255,.45);
+          font-weight: 800;
+          text-align: center;
+        }
+        .stock-report-table th:last-child { border-right: 0; }
+        .stock-report-table td {
+          padding: 2.5mm 1.5mm;
+          color: #172a43;
+          background: #fff;
+          border-top: 1px solid #b9c9d8;
+          border-right: 1px solid #b9c9d8;
+          text-align: center;
+          vertical-align: middle;
+          line-height: 1.25;
+          overflow-wrap: anywhere;
+        }
+        .stock-report-table td:last-child { border-right: 0; }
+        .stock-report-table tbody tr:nth-child(even) td { background: #edf4fb; }
+        .stock-report-date { white-space: nowrap; font-weight: 600; }
+        .stock-report-quantity { font-weight: 700; }
+        .stock-report-out { color: #b42318 !important; font-weight: 800; }
+        .stock-report-balance { font-size: 10pt; font-weight: 800; }
+        .stock-lot-breakdown {
+          margin: 1mm auto 0;
+          padding-top: 1mm;
+          border-top: 1px solid #d4dee8;
+          color: #4c5e72;
+          font-size: 7pt;
+          line-height: 1.25;
+          text-align: left;
+          white-space: normal;
+        }
+        .stock-report-empty {
+          margin: 4mm 2mm;
+          padding: 5mm;
+          border: 1px dashed #b9c9d8;
+          color: #64748b;
+          text-align: center;
+          font-style: italic;
+        }
+        .stock-report-footer { margin: 4mm 2mm 0; color: #40536c; font-size: 8pt; text-align: right; }
         @media print {
           html, body { background: #fff !important; }
           body { margin: 0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -1459,24 +1638,38 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           .stock-report-inner { width: 100% !important; max-width: none !important; margin: 0 !important; }
           .stock-report-sheet { margin: 0 !important; padding: 0 !important; border: 0 !important; box-shadow: none !important; break-after: page; page-break-after: always; }
           .stock-report-sheet:last-child { break-after: auto; page-break-after: auto; }
-          .stock-report-sheet h1 { font-size: ${reportPaperSize === "A5" ? "15pt" : "18pt"} !important; }
-          .stock-report-sheet h2 { font-size: ${reportPaperSize === "A5" ? "12pt" : "15pt"} !important; }
-          .stock-report-sheet table { width: 100% !important; table-layout: fixed; font-size: ${reportPaperSize === "A5" ? "7pt" : "9pt"} !important; }
-          .stock-report-sheet th, .stock-report-sheet td { padding: ${reportPaperSize === "A5" ? "3px 4px" : "5px 6px"} !important; overflow-wrap: anywhere; }
-          .stock-report-sheet th:nth-child(1), .stock-report-sheet td:nth-child(1) { width: 17%; }
-          .stock-report-sheet th:nth-child(2), .stock-report-sheet td:nth-child(2) { width: 13%; }
-          .stock-report-sheet th:nth-child(3), .stock-report-sheet td:nth-child(3) { width: 13%; }
-          .stock-report-sheet th:nth-child(4), .stock-report-sheet td:nth-child(4) { width: 22%; min-width: 0 !important; }
-          .stock-report-sheet th:nth-child(5), .stock-report-sheet td:nth-child(5) { width: 15%; }
-          .stock-report-sheet th:nth-child(6), .stock-report-sheet td:nth-child(6) { width: 20%; }
-          .stock-report-sheet .stock-lot-breakdown { font-size: ${reportPaperSize === "A5" ? "6pt" : "8pt"} !important; white-space: normal !important; }
-          .stock-report-sheet thead { display: table-header-group; }
-          .stock-report-sheet tr { break-inside: avoid; page-break-inside: avoid; }
+          .stock-report-banner { min-height: \${reportPaperSize === "A5" ? "20mm" : "25mm"}; padding: 4mm 5mm; }
+          .stock-report-brand { font-size: \${reportPaperSize === "A5" ? "17pt" : "21pt"}; min-width: 34mm; }
+          .stock-report-brand-mark { width: 10mm; height: 10mm; font-size: 15pt; }
+          .stock-report-banner-title { font-size: \${reportPaperSize === "A5" ? "13pt" : "17pt"}; }
+          .stock-report-banner-subtitle { font-size: \${reportPaperSize === "A5" ? "9pt" : "11pt"}; }
+          .stock-report-summary { min-height: \${reportPaperSize === "A5" ? "20mm" : "24mm"}; margin-top: 2.5mm; margin-bottom: 3mm; }
+          .stock-report-medicine-name { font-size: \${reportPaperSize === "A5" ? "14pt" : "18pt"}; }
+          .stock-report-label { font-size: \${reportPaperSize === "A5" ? "7pt" : "9pt"}; }
+          .stock-report-code-line { font-size: \${reportPaperSize === "A5" ? "8pt" : "10pt"}; }
+          .stock-report-unit-list { font-size: \${reportPaperSize === "A5" ? "7pt" : "9pt"}; }
+          .stock-report-period { font-size: \${reportPaperSize === "A5" ? "6.5pt" : "8pt"}; }
+          .stock-report-table { font-size: \${reportPaperSize === "A5" ? "6.5pt" : "8.5pt"}; }
+          .stock-report-table th { padding: \${reportPaperSize === "A5" ? "2mm 1mm" : "2.5mm 1.5mm"}; }
+          .stock-report-table td { padding: \${reportPaperSize === "A5" ? "1.5mm 1mm" : "2mm 1.5mm"}; }
+          .stock-report-table th:nth-child(1), .stock-report-table td:nth-child(1) { width: 18%; }
+          .stock-report-table th:nth-child(2), .stock-report-table td:nth-child(2) { width: 15%; }
+          .stock-report-table th:nth-child(3), .stock-report-table td:nth-child(3) { width: 15%; }
+          .stock-report-table th:nth-child(4), .stock-report-table td:nth-child(4) { width: 22%; }
+          .stock-report-table th:nth-child(5), .stock-report-table td:nth-child(5) { width: 14%; }
+          .stock-report-table th:nth-child(6), .stock-report-table td:nth-child(6) { width: 16%; }
+          .stock-lot-breakdown { font-size: \${reportPaperSize === "A5" ? "5.5pt" : "7pt"}; }
+          .stock-report-table thead { display: table-header-group; }
+          .stock-report-table tr { break-inside: avoid; page-break-inside: avoid; }
+          .stock-report-footer { margin-top: 3mm; }
         }
-      `}</style>
+      \`}</style>
       <div className="stock-report-inner max-w-5xl mx-auto">
         <div className="print:hidden flex justify-between mb-6 bg-gray-100 p-4 rounded-xl">
-          <div><h1 className="text-xl font-bold">ตัวอย่างก่อนพิมพ์รายงาน</h1></div>
+          <div>
+            <h1 className="text-xl font-bold">ตัวอย่างก่อนพิมพ์รายงาน</h1>
+            <p className="text-xs text-slate-500 mt-1">รูปแบบ Stock Card ใหม่ · \${reportPaperSize} \${reportPaperSize === "A4" ? "แนวตั้ง" : "แนวนอน"}</p>
+          </div>
           <div className="flex gap-3">
             <button onClick={() => setShowPrintView(false)} className="px-4 py-2 border rounded-lg font-medium">ปิด</button>
             <button onClick={() => window.print()} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium flex gap-2"><Printer size={18}/> พิมพ์ PDF</button>
@@ -1484,55 +1677,84 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
         </div>
         <div className="print-content">
           {Object.values(printData).map((medData: any) => (
-            <div key={medData.medName} className="stock-report-sheet mb-10 pb-4">
-              <h1 className="text-2xl font-bold text-center mb-2">Stock Card ({medData.medName})</h1>
-              <p className="text-center text-sm text-gray-600 mb-2">ช่วงวันที่ {formatThaiShortDate(medData.periodStart)} - {formatThaiShortDate(medData.periodEnd)}</p>
-              <p className="text-center text-xs text-gray-500 mb-5">พิมพ์วันที่: {new Date().toLocaleString("th-TH")}</p>
-              <div className="mb-4 border-b-2 border-black pb-2">
-                <h2 className="text-xl font-bold text-black">{medData.medName}</h2>
-                <div className="text-sm text-black">รหัส HosXP: {medData.hosxp || "-"} | หมายเหตุ: {medData.note || "-"}</div>
+            <section key={medData.medName} className="stock-report-sheet">
+              <header className="stock-report-banner">
+                <div className="stock-report-brand">
+                  <span className="stock-report-brand-mark">+</span>
+                  <span>Stock Card</span>
+                </div>
+                <div className="stock-report-banner-text">
+                  <div className="stock-report-banner-title">ห้องจ่ายยาผู้ป่วยนอก กลุ่มงานเภสัชกรรม</div>
+                  <div className="stock-report-banner-subtitle">โรงพยาบาลศรีสังวรสุโขทัย</div>
+                </div>
+                <div className="stock-report-banner-tag">PHARMACY</div>
+              </header>
+
+              <div className="stock-report-summary">
+                <div className="stock-report-summary-name">
+                  <div className="stock-report-label">ชื่อยา</div>
+                  <div className="stock-report-medicine-name">{medData.medName}</div>
+                </div>
+                <div className="stock-report-summary-code">
+                  <div className="stock-report-code-line"><strong>รหัสยา :</strong> {medData.hosxp || "-"}</div>
+                  <div className="stock-report-code-line"><strong>หมายเหตุ :</strong> {medData.note || "-"}</div>
+                </div>
+                <div className="stock-report-summary-units">
+                  <div className="stock-report-label">หน่วยนับ</div>
+                  <div className="stock-report-unit-list">
+                    {(medData.units || []).length > 0
+                      ? medData.units.map((unit: string) => <span className="stock-report-unit-item" key={unit}>• {unit}</span>)
+                      : <span className="stock-report-unit-item">-</span>}
+                  </div>
+                </div>
               </div>
-              {medData.transactions.length === 0 ? <p className="text-sm text-gray-500 italic py-4">ไม่มีประวัติการทำรายการ</p> : (
-                <table className="w-full text-sm text-left border-collapse border border-gray-400">
+
+              <div className="stock-report-period">
+                <span>ช่วงวันที่ {formatThaiShortDate(medData.periodStart)} - {formatThaiShortDate(medData.periodEnd)}</span>
+              </div>
+
+              {medData.transactions.length === 0 ? (
+                <div className="stock-report-empty">ไม่มีประวัติการทำรายการในช่วงวันที่เลือก</div>
+              ) : (
+                <table className="stock-report-table">
                   <thead>
-                    <tr className="bg-gray-100">
-                      <th className="border border-gray-400 p-2 text-black font-bold">วันที่ทำรายการ</th>
-                      <th className="border border-gray-400 p-2 text-center text-black font-bold">รับเข้า</th>
-                      <th className="border border-gray-400 p-2 text-center text-black font-bold">ตัดจ่าย</th>
-                      <th className="border border-gray-400 p-2 text-center text-black font-bold min-w-[160px]">ยอดยกไป (คงเหลือ)</th>
-                      <th className="border border-gray-400 p-2 text-black font-bold">ผู้ดำเนินการ</th>
-                      <th className="border border-gray-400 p-2 text-black font-bold">หมายเหตุ (Exp)</th>
+                    <tr>
+                      <th>วันที่ทำรายการ</th>
+                      <th>รับเข้า</th>
+                      <th>ตัดจ่าย</th>
+                      <th>คงเหลือ</th>
+                      <th>ผู้ดำเนินการ</th>
+                      <th>หมายเหตุ (Exp)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {medData.transactions.map((tx: any) => (
-                      <tr key={tx.id} className="border border-gray-400">
-                        <td className="border border-gray-400 p-2 text-black align-top">{formatHistoryDate(tx.created_at)}</td>
-                        <td className="border border-gray-400 p-2 text-center text-black font-medium align-top">{tx.action === 'in' ? tx.amountText : '-'}</td>
-                        <td className="border border-gray-400 p-2 text-center text-red-600 font-bold align-top">{tx.action === 'out' ? tx.amountText : '-'}</td>
-                        <td className="border border-gray-400 p-2 text-center align-top">
-                           <div className="text-black font-bold">{tx.balanceText}</div>
-                           {tx.lotBreakdown && tx.lotBreakdown.length > 0 && (
-                             <div className="stock-lot-breakdown text-[10px] text-gray-700 font-medium mt-1 pt-1 border-t border-gray-300 text-left w-fit mx-auto leading-tight whitespace-nowrap">
-                                {tx.lotBreakdown.map((txt: string, i: number) => <div key={i}>• {txt}</div>)}
-                             </div>
-                           )}
+                      <tr key={tx.id}>
+                        <td className="stock-report-date">{new Date(tx.created_at).toLocaleDateString("th-TH", { day: "2-digit", month: "short", year: "numeric" })} {new Date(tx.created_at).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}</td>
+                        <td className="stock-report-quantity">{tx.action === "in" ? tx.amountText : "-"}</td>
+                        <td className="stock-report-out">{tx.action === "out" ? tx.amountText : "-"}</td>
+                        <td>
+                          <div className="stock-report-balance">{tx.balanceText}</div>
+                          {tx.lotBreakdown && tx.lotBreakdown.length > 0 && (
+                            <div className="stock-lot-breakdown">
+                              {tx.lotBreakdown.map((txt: string, i: number) => <div key={i}>- {txt}</div>)}
+                            </div>
+                          )}
                         </td>
-                        <td className="border border-gray-400 p-2 text-black align-top">{tx.staff_name}</td>
-                        <td className="border border-gray-400 p-2 text-black text-xs align-top">{tx.lotExp !== 'N/A' ? tx.lotExp : ''} {tx.edit_note ? `[${tx.edit_note}]` : ''}</td>
+                        <td>{tx.staff_name || "-"}</td>
+                        <td>{tx.lotExp !== "N/A" ? tx.lotExp : ""} {tx.edit_note ? \`[\${tx.edit_note}]\` : ""}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               )}
-            </div>
+              <footer className="stock-report-footer">วันที่พิมพ์ : {new Date().toLocaleString("th-TH")}</footer>
+            </section>
           ))}
         </div>
       </div>
     </div> 
-  );
-  
-  if (showQRPrintView) return ( 
+  );  if (showQRPrintView) return ( 
     <div className="bg-white min-h-screen text-black print:p-0 p-4">
       <div className="max-w-5xl mx-auto">
         <div className="print:hidden flex justify-between mb-6 bg-gray-100 p-4 rounded-xl">
