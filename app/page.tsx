@@ -273,7 +273,10 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   const [isReportModalOpen, setIsReportModalOpen] = useState(false); 
   const [reportTargetCategory, setReportTargetCategory] = useState<number | "all">("all"); 
   const [reportTargetId, setReportTargetId] = useState("all"); 
-  const todayForReport = new Date().toLocaleDateString("en-CA");
+  const todayForReport = (() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  })();
   const [reportStartDate, setReportStartDate] = useState("2000-01-01");
   const [reportEndDate, setReportEndDate] = useState(todayForReport);
   const [reportPaperSize, setReportPaperSize] = useState<"A4" | "A5">("A4");
@@ -1270,7 +1273,7 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
   if (showPrintView) return ( 
     <div className={`stock-report-page bg-white min-h-screen text-black p-4 md:p-8 print:p-0`} data-paper-size={reportPaperSize}>
       <style jsx global>{`
-        @page { size: ${reportPaperSize} portrait; margin: 10mm; }
+        @page { size: ${reportPaperSize} landscape; margin: ${reportPaperSize === "A5" ? "6mm" : "8mm"}; }
         @media print {
           html, body { background: #fff !important; }
           body { margin: 0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -1282,6 +1285,12 @@ function StockCardApp({ session, onLogout, staffList, refreshStaffList }: { sess
           .stock-report-sheet h2 { font-size: ${reportPaperSize === "A5" ? "12pt" : "15pt"} !important; }
           .stock-report-sheet table { width: 100% !important; table-layout: fixed; font-size: ${reportPaperSize === "A5" ? "7pt" : "9pt"} !important; }
           .stock-report-sheet th, .stock-report-sheet td { padding: ${reportPaperSize === "A5" ? "3px 4px" : "5px 6px"} !important; overflow-wrap: anywhere; }
+          .stock-report-sheet th:nth-child(1), .stock-report-sheet td:nth-child(1) { width: 17%; }
+          .stock-report-sheet th:nth-child(2), .stock-report-sheet td:nth-child(2) { width: 13%; }
+          .stock-report-sheet th:nth-child(3), .stock-report-sheet td:nth-child(3) { width: 13%; }
+          .stock-report-sheet th:nth-child(4), .stock-report-sheet td:nth-child(4) { width: 22%; min-width: 0 !important; }
+          .stock-report-sheet th:nth-child(5), .stock-report-sheet td:nth-child(5) { width: 15%; }
+          .stock-report-sheet th:nth-child(6), .stock-report-sheet td:nth-child(6) { width: 20%; }
           .stock-report-sheet .stock-lot-breakdown { font-size: ${reportPaperSize === "A5" ? "6pt" : "8pt"} !important; white-space: normal !important; }
           .stock-report-sheet thead { display: table-header-group; }
           .stock-report-sheet tr { break-inside: avoid; page-break-inside: avoid; }
